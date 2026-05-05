@@ -41,6 +41,16 @@ namespace PixelLab.Editor
             return await HandleResponse(response);
         }
 
+        private async Task<JObject> PatchJson(string path, JObject payload)
+        {
+            string url = _baseUrl + path;
+            string json = payload?.ToString(Newtonsoft.Json.Formatting.None) ?? "{}";
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
+            HttpResponseMessage response = await _http.SendAsync(request);
+            return await HandleResponse(response);
+        }
+
         private async Task<JObject> GetJson(string path, Dictionary<string, string> queryParams = null)
         {
             string url = _baseUrl + path;
@@ -88,9 +98,9 @@ namespace PixelLab.Editor
                 {
                     var errorObj = JObject.Parse(body);
                     if (errorObj["error"] != null)
-                        errorMessage = errorObj["error"]!.ToString();
+                        errorMessage = errorObj["error"].ToString();
                     else if (errorObj["detail"] != null)
-                        errorMessage = errorObj["detail"]!.ToString();
+                        errorMessage = errorObj["detail"].ToString();
                 }
                 catch
                 {
@@ -198,90 +208,118 @@ namespace PixelLab.Editor
         }
 
         // -------------------------------------------------------------------------
-        // Image Generation
+        // Animate
         // -------------------------------------------------------------------------
 
-        public Task<JObject> GenerateImage(string description, int width, int height, JObject extraParams = null)
+        public Task<JObject> EditAnimationV2(string description, JArray frames, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
                 ["description"] = description,
+                ["frames"] = frames,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/generate-image-v2", payload);
+            return PostJson("/edit-animation-v2", payload);
         }
 
-        public Task<JObject> GenerateImagePixflux(string description, int width, int height, JObject extraParams = null)
+        public Task<JObject> Interpolation(JObject startImage, JObject endImage, string action, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["description"] = description,
+                ["start_image"] = startImage,
+                ["end_image"] = endImage,
+                ["action"] = action,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/create-image-pixflux", payload);
+            return PostJson("/interpolation-v2", payload);
         }
 
-        public Task<JObject> GenerateImageBitforge(string description, int width, int height, JObject extraParams = null)
+        public Task<JObject> TransferOutfitV2(JObject referenceImage, JArray frames, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["description"] = description,
+                ["reference_image"] = referenceImage,
+                ["frames"] = frames,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/create-image-bitforge", payload);
+            return PostJson("/transfer-outfit-v2", payload);
         }
 
-        public Task<JObject> GenerateWithStyle(string description, JArray styleImages, int width, int height, JObject extraParams = null)
+        public Task<JObject> AnimateWithSkeleton(JObject referenceImage, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["description"] = description,
-                ["style_images"] = styleImages,
+                ["reference_image"] = referenceImage,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/generate-with-style-v2", payload);
+            return PostJson("/animate-with-skeleton", payload);
         }
 
-        public Task<JObject> GenerateUI(string description, int width, int height, JObject extraParams = null)
+        public Task<JObject> AnimateWithText(string description, string action, JObject referenceImage, JObject extraParams = null)
         {
             var payload = new JObject
             {
                 ["description"] = description,
+                ["action"] = action,
+                ["reference_image"] = referenceImage,
+                ["image_size"] = ImageSize(64, 64)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/animate-with-text", payload);
+        }
+
+        public Task<JObject> AnimateWithTextV2(JObject referenceImage, string action, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["reference_image"] = referenceImage,
+                ["action"] = action,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/generate-ui-v2", payload);
+            // Default reference_image_size to output size if not provided (matches Python client behaviour)
+            if (payload["reference_image_size"] == null)
+                payload["reference_image_size"] = ImageSize(width, height);
+            return PostJson("/animate-with-text-v2", payload);
+        }
+
+        public Task<JObject> AnimateWithTextV3(JObject firstFrame, string action, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["first_frame"] = firstFrame,
+                ["action"] = action
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/animate-with-text-v3", payload);
+        }
+
+        public Task<JObject> EstimateSkeleton(JObject image)
+        {
+            var payload = new JObject
+            {
+                ["image"] = image
+            };
+            return PostJson("/estimate-skeleton", payload);
+        }
+
+        public Task<JObject> Generate8RotationsV3(JObject firstFrame, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["first_frame"] = firstFrame
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/generate-8-rotations-v3", payload);
         }
 
         // -------------------------------------------------------------------------
-        // Characters
+        // Character Management
         // -------------------------------------------------------------------------
-
-        public Task<JObject> CreateCharacter4Dir(string description, int width, int height, JObject extraParams = null)
-        {
-            var payload = new JObject
-            {
-                ["description"] = description,
-                ["image_size"] = ImageSize(width, height)
-            };
-            MergeExtras(payload, extraParams);
-            return PostJson("/create-character-with-4-directions", payload);
-        }
-
-        public Task<JObject> CreateCharacter8Dir(string description, int width, int height, JObject extraParams = null)
-        {
-            var payload = new JObject
-            {
-                ["description"] = description,
-                ["image_size"] = ImageSize(width, height)
-            };
-            MergeExtras(payload, extraParams);
-            return PostJson("/create-character-with-8-directions", payload);
-        }
 
         public Task<JObject> ListCharacters(int limit = 20, int offset = 0) =>
             GetJson("/characters", new Dictionary<string, string>
@@ -310,8 +348,8 @@ namespace PixelLab.Editor
                     try
                     {
                         var errorObj = JObject.Parse(body);
-                        if (errorObj["error"] != null) errorMessage = errorObj["error"]!.ToString();
-                        else if (errorObj["detail"] != null) errorMessage = errorObj["detail"]!.ToString();
+                        if (errorObj["error"] != null) errorMessage = errorObj["error"].ToString();
+                        else if (errorObj["detail"] != null) errorMessage = errorObj["detail"].ToString();
                     }
                     catch { }
                 }
@@ -320,57 +358,258 @@ namespace PixelLab.Editor
             return await response.Content.ReadAsByteArrayAsync();
         }
 
-        public Task<JObject> CreateCharacterAnimation(string characterId, string templateAnimationId)
+        public Task<JObject> UpdateCharacterTags(string characterId, string[] tags)
+        {
+            var tagsArr = new JArray();
+            if (tags != null)
+            {
+                foreach (var t in tags) tagsArr.Add(t);
+            }
+            var payload = new JObject
+            {
+                ["tags"] = tagsArr
+            };
+            return PatchJson($"/characters/{characterId}/tags", payload);
+        }
+
+        // -------------------------------------------------------------------------
+        // Character From Template
+        // -------------------------------------------------------------------------
+
+        public Task<JObject> CreateCharacter4Dir(string description, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["character_id"] = characterId,
-                ["template_animation_id"] = templateAnimationId
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height)
             };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-character-with-4-directions", payload);
+        }
+
+        public Task<JObject> CreateCharacter8Dir(string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-character-with-8-directions", payload);
+        }
+
+        public Task<JObject> CreateCharacterAnimation(string characterId, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["character_id"] = characterId
+            };
+            MergeExtras(payload, extraParams);
             return PostJson("/characters/animations", payload);
         }
 
-        // -------------------------------------------------------------------------
-        // Animation
-        // -------------------------------------------------------------------------
+        // Backwards-compatible overload: keeps the original 2-arg signature alive for existing panels.
+        public Task<JObject> CreateCharacterAnimation(string characterId, string templateAnimationId)
+        {
+            var extras = new JObject
+            {
+                ["template_animation_id"] = templateAnimationId
+            };
+            return CreateCharacterAnimation(characterId, extras);
+        }
 
-        public Task<JObject> AnimateWithTextV2(JObject referenceImage, string action, int width, int height, JObject extraParams = null)
+        public Task<JObject> AnimateCharacter(string characterId, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["reference_image"] = referenceImage,
-                ["action"] = action,
+                ["character_id"] = characterId
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/animate-character", payload);
+        }
+
+        // -------------------------------------------------------------------------
+        // Create Image
+        // -------------------------------------------------------------------------
+
+        public Task<JObject> GenerateImage(string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            // Default reference_image_size to output size if not provided (matches Python client behaviour)
-            if (payload["reference_image_size"] == null)
-                payload["reference_image_size"] = ImageSize(width, height);
-            return PostJson("/animate-with-text-v2", payload);
+            return PostJson("/generate-image-v2", payload);
         }
 
-        public Task<JObject> AnimateWithSkeleton(JObject referenceImage, int width, int height, JObject extraParams = null)
+        public Task<JObject> GenerateWithStyle(string description, JArray styleImages, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["reference_image"] = referenceImage,
+                ["description"] = description,
+                ["style_images"] = styleImages,
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/animate-with-skeleton", payload);
+            return PostJson("/generate-with-style-v2", payload);
         }
 
-        public Task<JObject> Interpolation(JObject startImage, JObject endImage, string action, int width, int height)
+        public Task<JObject> GenerateUI(string description, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
-                ["start_image"] = startImage,
-                ["end_image"] = endImage,
-                ["action"] = action,
+                ["description"] = description,
                 ["image_size"] = ImageSize(width, height)
             };
-            return PostJson("/interpolation-v2", payload);
+            MergeExtras(payload, extraParams);
+            return PostJson("/generate-ui-v2", payload);
         }
+
+        public Task<JObject> GenerateImagePixflux(string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-image-pixflux", payload);
+        }
+
+        public Task<JObject> GenerateImagePixen(string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-image-pixen", payload);
+        }
+
+        public Task<JObject> GenerateImageBitforge(string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-image-bitforge", payload);
+        }
+
+        // -------------------------------------------------------------------------
+        // Create Map
+        // -------------------------------------------------------------------------
+
+        public Task<JObject> CreateTileset(string lowerDescription, string upperDescription, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["lower_description"] = lowerDescription,
+                ["upper_description"] = upperDescription
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/tilesets", payload);
+        }
+
+        public Task<JObject> ListTilesets(int limit = 20, int offset = 0) =>
+            GetJson("/tilesets", new Dictionary<string, string>
+            {
+                ["limit"] = limit.ToString(),
+                ["offset"] = offset.ToString()
+            });
+
+        public Task<JObject> GetTileset(string tilesetId) =>
+            GetJson($"/tilesets/{tilesetId}");
+
+        public Task<JObject> CreateTilesetTopdown(string lowerDescription, string upperDescription, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["lower_description"] = lowerDescription,
+                ["upper_description"] = upperDescription
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-tileset", payload);
+        }
+
+        public Task<JObject> CreateTilesetSidescroller(string lowerDescription, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["lower_description"] = lowerDescription
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/tilesets-sidescroller", payload);
+        }
+
+        public Task<JObject> CreateTilesetSidescrollerV2(string lowerDescription, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["lower_description"] = lowerDescription
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-tileset-sidescroller", payload);
+        }
+
+        public Task<JObject> CreateIsometricTile(string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-isometric-tile", payload);
+        }
+
+        public Task<JObject> GetIsometricTile(string tileId) =>
+            GetJson($"/isometric-tiles/{tileId}");
+
+        public Task<JObject> ListIsometricTiles(int limit = 20, int offset = 0) =>
+            GetJson("/isometric-tiles", new Dictionary<string, string>
+            {
+                ["limit"] = limit.ToString(),
+                ["offset"] = offset.ToString()
+            });
+
+        public Task<JObject> CreateTilesPro(string description, string tileType = "isometric", JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["tile_type"] = tileType
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/create-tiles-pro", payload);
+        }
+
+        public Task<JObject> GetTilesPro(string tileId) =>
+            GetJson($"/tiles-pro/{tileId}");
+
+        // -------------------------------------------------------------------------
+        // Documentation
+        // -------------------------------------------------------------------------
+
+        public async Task<string> GetLlmsTxt()
+        {
+            string url = _baseUrl + "/llms.txt";
+            HttpResponseMessage response = await _http.GetAsync(url);
+            int statusCode = (int)response.StatusCode;
+            string body = await response.Content.ReadAsStringAsync();
+            if (statusCode != 200 && statusCode != 202)
+            {
+                throw new PixelLabException(statusCode, body);
+            }
+            return body;
+        }
+
+        // -------------------------------------------------------------------------
+        // Edit
+        // -------------------------------------------------------------------------
 
         public Task<JObject> EditImagesV2(JArray editImages, int width, int height, JObject extraParams = null)
         {
@@ -383,8 +622,62 @@ namespace PixelLab.Editor
             return PostJson("/edit-images-v2", payload);
         }
 
+        public Task<JObject> EditImage(JObject image, string description, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["image"] = image,
+                ["description"] = description,
+                ["image_size"] = ImageSize(width, height),
+                ["width"] = width,
+                ["height"] = height
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/edit-image", payload);
+        }
+
         // -------------------------------------------------------------------------
         // Image Operations
+        // -------------------------------------------------------------------------
+
+        public Task<JObject> ImageToPixelart(JObject image, int inputWidth, int inputHeight, int outputWidth, int outputHeight, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["image"] = image,
+                ["image_size"] = ImageSize(inputWidth, inputHeight),
+                ["output_size"] = ImageSize(outputWidth, outputHeight)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/image-to-pixelart", payload);
+        }
+
+        public Task<JObject> Resize(string description, JObject referenceImage, int refWidth, int refHeight, int targetWidth, int targetHeight, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["description"] = description,
+                ["reference_image"] = referenceImage,
+                ["reference_image_size"] = ImageSize(refWidth, refHeight),
+                ["target_size"] = ImageSize(targetWidth, targetHeight)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/resize", payload);
+        }
+
+        public Task<JObject> RemoveBackground(JObject image, int width, int height, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["image"] = image,
+                ["image_size"] = ImageSize(width, height)
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/remove-background", payload);
+        }
+
+        // -------------------------------------------------------------------------
+        // Inpaint
         // -------------------------------------------------------------------------
 
         public Task<JObject> InpaintV3(string description, JObject inpaintingImage, JObject maskImage, JObject extraParams = null)
@@ -399,74 +692,17 @@ namespace PixelLab.Editor
             return PostJson("/inpaint-v3", payload);
         }
 
-        public Task<JObject> ImageToPixelart(JObject image, int inputWidth, int inputHeight, int outputWidth, int outputHeight)
-        {
-            var payload = new JObject
-            {
-                ["image"] = image,
-                ["image_size"] = ImageSize(inputWidth, inputHeight),
-                ["output_size"] = ImageSize(outputWidth, outputHeight)
-            };
-            return PostJson("/image-to-pixelart", payload);
-        }
-
-        public Task<JObject> Resize(string description, JObject referenceImage, int refWidth, int refHeight, int targetWidth, int targetHeight)
+        public Task<JObject> Inpaint(string description, int width, int height, JObject inpaintingImage, JObject maskImage, JObject extraParams = null)
         {
             var payload = new JObject
             {
                 ["description"] = description,
-                ["reference_image"] = referenceImage,
-                ["reference_image_size"] = ImageSize(refWidth, refHeight),
-                ["target_size"] = ImageSize(targetWidth, targetHeight)
-            };
-            return PostJson("/resize", payload);
-        }
-
-        // -------------------------------------------------------------------------
-        // Tilesets
-        // -------------------------------------------------------------------------
-
-        public Task<JObject> CreateTileset(string lowerDescription, string upperDescription, JObject extraParams = null)
-        {
-            var payload = new JObject
-            {
-                ["lower_description"] = lowerDescription,
-                ["upper_description"] = upperDescription
+                ["image_size"] = ImageSize(width, height),
+                ["inpainting_image"] = inpaintingImage,
+                ["mask_image"] = maskImage
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/tilesets", payload);
-        }
-
-        public Task<JObject> CreateTilesetSidescroller(string lowerDescription, JObject extraParams = null)
-        {
-            var payload = new JObject
-            {
-                ["lower_description"] = lowerDescription
-            };
-            MergeExtras(payload, extraParams);
-            return PostJson("/tilesets-sidescroller", payload);
-        }
-
-        public Task<JObject> CreateIsometricTile(string description, int width, int height, JObject extraParams = null)
-        {
-            var payload = new JObject
-            {
-                ["description"] = description,
-                ["image_size"] = ImageSize(width, height)
-            };
-            MergeExtras(payload, extraParams);
-            return PostJson("/create-isometric-tile", payload);
-        }
-
-        public Task<JObject> CreateTilesPro(string description, string tileType = "square", JObject extraParams = null)
-        {
-            var payload = new JObject
-            {
-                ["description"] = description,
-                ["tile_type"] = tileType
-            };
-            MergeExtras(payload, extraParams);
-            return PostJson("/create-tiles-pro", payload);
+            return PostJson("/inpaint", payload);
         }
 
         // -------------------------------------------------------------------------
@@ -484,7 +720,42 @@ namespace PixelLab.Editor
             return PostJson("/map-objects", payload);
         }
 
-        public Task<JObject> CreateObject4Dir(string description, int width, int height, JObject extraParams = null)
+        // -------------------------------------------------------------------------
+        // Object Management
+        // -------------------------------------------------------------------------
+
+        public Task<JObject> ListObjects(int limit = 20, int offset = 0) =>
+            GetJson("/objects", new Dictionary<string, string>
+            {
+                ["limit"] = limit.ToString(),
+                ["offset"] = offset.ToString()
+            });
+
+        public Task<JObject> GetObject(string id) =>
+            GetJson($"/objects/{id}");
+
+        public Task<JObject> DeleteObject(string id) =>
+            DeleteJson($"/objects/{id}");
+
+        public Task<JObject> UpdateObjectTags(string id, string[] tags)
+        {
+            var tagsArr = new JArray();
+            if (tags != null)
+            {
+                foreach (var t in tags) tagsArr.Add(t);
+            }
+            var payload = new JObject
+            {
+                ["tags"] = tagsArr
+            };
+            return PatchJson($"/objects/{id}/tags", payload);
+        }
+
+        // -------------------------------------------------------------------------
+        // Objects (modern)
+        // -------------------------------------------------------------------------
+
+        public Task<JObject> CreateObject(string description, int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
@@ -492,8 +763,50 @@ namespace PixelLab.Editor
                 ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
-            return PostJson("/create-object-with-4-directions", payload);
+            return PostJson("/objects", payload);
         }
+
+        public Task<JObject> AnimateObject(string objectId, string direction, string animationDescription, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["object_id"] = objectId,
+                ["direction"] = direction,
+                ["animation_description"] = animationDescription
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/animate-object", payload);
+        }
+
+        public Task<JObject> VaryObject(string objectId, string editDescription, JObject extraParams = null)
+        {
+            var payload = new JObject
+            {
+                ["object_id"] = objectId,
+                ["edit_description"] = editDescription
+            };
+            MergeExtras(payload, extraParams);
+            return PostJson("/vary-object", payload);
+        }
+
+        public Task<JObject> SelectObjectFrames(string objectId, int[] indices, string commonTag = null)
+        {
+            var indicesArr = new JArray();
+            if (indices != null)
+            {
+                foreach (var i in indices) indicesArr.Add(i);
+            }
+            var payload = new JObject
+            {
+                ["indices"] = indicesArr
+            };
+            if (!string.IsNullOrEmpty(commonTag))
+                payload["common_tag"] = commonTag;
+            return PostJson($"/objects/{objectId}/select-frames", payload);
+        }
+
+        public Task<JObject> DismissObjectReview(string objectId) =>
+            PostJson($"/objects/{objectId}/dismiss-review", new JObject());
 
         // -------------------------------------------------------------------------
         // Rotate
@@ -510,7 +823,7 @@ namespace PixelLab.Editor
             return PostJson("/rotate", payload);
         }
 
-        public Task<JObject> Generate8Rotations(int width, int height, JObject extraParams = null)
+        public Task<JObject> Generate8RotationsV2(int width, int height, JObject extraParams = null)
         {
             var payload = new JObject
             {
@@ -519,6 +832,10 @@ namespace PixelLab.Editor
             MergeExtras(payload, extraParams);
             return PostJson("/generate-8-rotations-v2", payload);
         }
+
+        // Backwards-compatible alias for the v2 endpoint.
+        public Task<JObject> Generate8Rotations(int width, int height, JObject extraParams = null) =>
+            Generate8RotationsV2(width, height, extraParams);
 
         // -------------------------------------------------------------------------
         // IDisposable
