@@ -83,7 +83,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Image Edit");
+            DrawPanelHeader("Image Edit", "True inpainting, pixelart conversion, resize, and background removal.");
 
             if (!RequireClient())
             {
@@ -145,7 +145,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Edit Image", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Edit Image"))
                 RunEditImages();
             GUI.enabled = true;
         }
@@ -227,7 +227,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Run Inpaint", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Run Inpaint"))
                 RunInpaint();
             GUI.enabled = true;
         }
@@ -325,7 +325,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Convert to Pixelart", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Convert to Pixelart"))
                 RunPixelart();
             GUI.enabled = true;
         }
@@ -420,7 +420,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Resize Image", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Resize Image"))
                 RunResize();
             GUI.enabled = true;
         }
@@ -504,7 +504,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Remove Background", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Remove Background"))
                 RunRemoveBackground();
             GUI.enabled = true;
         }

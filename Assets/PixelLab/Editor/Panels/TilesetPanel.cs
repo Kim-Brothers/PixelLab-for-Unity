@@ -99,7 +99,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Generate Tileset");
+            DrawPanelHeader("Generate Tileset", "Tilesets and scenes — top-down, side-scroller, isometric, and pro.");
 
             if (!RequireClient())
             {
@@ -169,7 +169,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Tileset", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Tileset"))
                 RunTopDown();
             GUI.enabled = true;
         }
@@ -244,7 +244,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Tileset", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Tileset"))
                 RunSideScroller();
             GUI.enabled = true;
         }
@@ -323,7 +323,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Tile", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Tile"))
                 RunIsometric();
             GUI.enabled = true;
         }
@@ -439,7 +439,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Tile", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Tile"))
                 RunPro();
             GUI.enabled = true;
         }

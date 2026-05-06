@@ -11,21 +11,12 @@ namespace PixelLab.Editor
         private string  _balanceText = "Balance not loaded";
         private Vector2 _costScroll;
         private bool    _costFoldout  = false;
-        private bool    _aboutFoldout = false;
 
         private float _pendingUsd = 0f;
 
-        // -----------------------------------------------------------------------
-        // Palette — vibrant violet/cyan accents over a dark base. Disclaimer text
-        // is what carries the "unofficial" message; the visual style itself is
-        // free to look polished.
-        // -----------------------------------------------------------------------
-        private static readonly Color HeroBg      = new Color(0.13f, 0.13f, 0.17f);
-        private static readonly Color BrandViolet = new Color(0.55f, 0.35f, 0.95f);
-        private static readonly Color BrandCyan   = new Color(0.30f, 0.85f, 0.95f);
-        private static readonly Color HoverGlow   = new Color(0.75f, 0.55f, 1.00f);
-        private static readonly Color MutedText   = new Color(0.70f, 0.70f, 0.78f);
-        private static readonly Color BodyText    = new Color(0.92f, 0.92f, 0.96f);
+        // HoverGlow is Dashboard-specific (card hover); other palette constants
+        // are inherited from BasePanel.
+        private static readonly Color HoverGlow = new Color(0.75f, 0.55f, 1.00f);
 
         private GUIStyle _heroTitleStyle;
         private GUIStyle _heroSubtitleStyle;
@@ -37,15 +28,8 @@ namespace PixelLab.Editor
         private GUIStyle _topUpButtonStyle;
         private GUIStyle _mutedStyle;
         private GUIStyle _linkStyle;
-        private GUIStyle _aboutBodyStyle;
 
         private bool _stylesReady;
-
-        // 4/8/12/16 spacing system
-        private const float SpaceXS = 4f;
-        private const float SpaceS  = 8f;
-        private const float SpaceM  = 12f;
-        private const float SpaceL  = 16f;
 
         // Card layout constants — fixed height keeps every card identical no
         // matter how the description wraps; width still follows panel width.
@@ -162,13 +146,6 @@ namespace PixelLab.Editor
                 normal = { textColor = new Color(0.50f, 0.70f, 0.95f) },
                 hover  = { textColor = new Color(0.70f, 0.85f, 1f) },
             };
-
-            _aboutBodyStyle = new GUIStyle(EditorStyles.label)
-            {
-                fontSize = 11,
-                wordWrap = true,
-                normal   = { textColor = BodyText },
-            };
         }
 
         // -----------------------------------------------------------------------
@@ -192,9 +169,6 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(SpaceS);
             DrawFeatureGrid();
             EditorGUILayout.Space(SpaceM);
-
-            DrawAboutFoldout();
-            EditorGUILayout.Space(SpaceS);
 
             DrawCostReference();
             EditorGUILayout.Space(SpaceM);
@@ -289,6 +263,8 @@ namespace PixelLab.Editor
                 int idx = Window.GetPanelIndex("Settings");
                 if (idx >= 0) Window.SelectPanel(idx);
             }
+            if (GUILayout.Button("Get API Key →", _linkStyle))
+                Application.OpenURL("https://www.pixellab.ai/pixellab-api");
             EditorGUILayout.EndHorizontal();
         }
 
@@ -373,23 +349,6 @@ namespace PixelLab.Editor
                     e.Use();
                 }
             }
-        }
-
-        // -----------------------------------------------------------------------
-        // About — folded by default. Includes explicit "unofficial" disclaimer.
-        // -----------------------------------------------------------------------
-        private void DrawAboutFoldout()
-        {
-            _aboutFoldout = EditorGUILayout.Foldout(_aboutFoldout, "About", true);
-            if (!_aboutFoldout) return;
-
-            EditorGUILayout.Space(SpaceXS);
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            GUILayout.Label(
-                "Editor extension that wraps the PixelLab v2 API. Generate, animate, " +
-                "rotate, edit, and tile pixel art inside Unity using your own PixelLab account.",
-                _aboutBodyStyle);
-            EditorGUILayout.EndVertical();
         }
 
         // -----------------------------------------------------------------------

@@ -108,7 +108,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Object Generation / Management");
+            DrawPanelHeader("Object Generation", "Items, props, and UI parts — buttons, health bars, menus.");
 
             if (!RequireClient())
             {
@@ -232,7 +232,7 @@ namespace PixelLab.Editor
                 ? LoadingMessage
                 : (_isMapObject ? "Generate Map Object" : "Generate Object");
 
-            if (GUILayout.Button(createLabel, GUILayout.Height(32)))
+            if (DrawPrimaryButton(createLabel))
             {
                 _createError = "";
                 StartCreateObject();

@@ -99,7 +99,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Image Generation");
+            DrawPanelHeader("Image Generation", "Text-to-pixel generation with multiple model options.");
 
             if (!RequireClient())
             {
@@ -250,7 +250,7 @@ namespace PixelLab.Editor
 
             // Generate button
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate", GUILayout.Height(32)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate"))
             {
                 _errorMessage = "";
                 StartGenerate();

@@ -38,7 +38,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("API Settings");
+            DrawPanelHeader("Settings", "API key, output directory, and connection settings.");
 
             // API Key field with show/hide toggle
             EditorGUILayout.BeginHorizontal();
@@ -49,6 +49,15 @@ namespace PixelLab.Editor
                 _apiKey = EditorGUILayout.PasswordField(_apiKey);
             if (GUILayout.Button(_showKey ? "Hide" : "Show", GUILayout.Width(52)))
                 _showKey = !_showKey;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(EditorGUIUtility.labelWidth);
+            if (GUILayout.Button("Get API Key →", EditorStyles.linkLabel))
+                Application.OpenURL("https://www.pixellab.ai/pixellab-api");
+            if (GUILayout.Button("API Docs →", EditorStyles.linkLabel))
+                Application.OpenURL("https://www.pixellab.ai/docs");
+            GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
             // Output directory with folder picker
@@ -81,15 +90,15 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(10);
 
             // Save and Test Connection buttons
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Save Settings", GUILayout.Height(30)))
+            if (DrawPrimaryButton("Save Settings"))
                 SaveSettings();
 
+            EditorGUILayout.Space(SpaceXS);
+
             GUI.enabled = !string.IsNullOrEmpty(_apiKey) && !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Test Connection", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Test Connection"))
                 TestConnection();
             GUI.enabled = true;
-            EditorGUILayout.EndHorizontal();
 
             // Test result feedback
             if (!string.IsNullOrEmpty(_testResult))

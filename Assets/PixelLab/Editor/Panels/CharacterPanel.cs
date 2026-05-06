@@ -87,7 +87,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Character Generation / Management");
+            DrawPanelHeader("Character Generation", "Style-matched character spritesheets from a reference.");
 
             if (!RequireClient())
             {
@@ -162,7 +162,7 @@ namespace PixelLab.Editor
 
             // Create button
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Character", GUILayout.Height(32)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Character"))
             {
                 _createError = "";
                 StartCreateCharacter();

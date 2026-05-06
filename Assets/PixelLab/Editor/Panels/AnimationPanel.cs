@@ -138,7 +138,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Animation");
+            DrawPanelHeader("Animation", "One-click, skeleton-based, and text-driven animations.");
 
             if (!RequireClient())
             {
@@ -216,7 +216,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Animation", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Animation"))
                 RunTextAnimation();
             GUI.enabled = true;
         }
@@ -319,7 +319,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Animation", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Animation"))
                 RunCharacterAnimation();
             GUI.enabled = true;
         }
@@ -413,7 +413,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Interpolation", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Interpolation"))
                 RunInterpolation();
             GUI.enabled = true;
         }
@@ -502,7 +502,7 @@ namespace PixelLab.Editor
             _v3NoBackground = EditorGUILayout.Toggle("No Background", _v3NoBackground);
             EditorGUILayout.Space(8);
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Animation V3", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Animation V3"))
                 RunAnimV3();
             GUI.enabled = true;
         }
@@ -560,7 +560,7 @@ namespace PixelLab.Editor
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(8);
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Animate with Skeleton", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Animate with Skeleton"))
                 RunSkeletonAnim();
             GUI.enabled = true;
         }
@@ -615,7 +615,7 @@ namespace PixelLab.Editor
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(8);
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Edit Animation", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Edit Animation"))
                 RunEditAnim();
             GUI.enabled = true;
         }
@@ -672,7 +672,7 @@ namespace PixelLab.Editor
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(8);
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Transfer Outfit", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Transfer Outfit"))
                 RunOutfitTransfer();
             GUI.enabled = true;
         }
@@ -711,7 +711,7 @@ namespace PixelLab.Editor
             DrawImagePicker("Character Image", ref _estSkelImagePath, ref _estSkelImagePreview);
             EditorGUILayout.Space(8);
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Estimate Skeleton", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Estimate Skeleton"))
                 RunEstimateSkeleton();
             GUI.enabled = true;
 
@@ -768,7 +768,7 @@ namespace PixelLab.Editor
             _rot8v3Seed         = EditorGUILayout.IntField("Seed (0 = Random)", _rot8v3Seed);
             EditorGUILayout.Space(8);
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate 8 Rotations V3", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate 8 Rotations V3"))
                 Run8RotationsV3();
             GUI.enabled = true;
         }

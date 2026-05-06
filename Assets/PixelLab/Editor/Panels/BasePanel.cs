@@ -16,6 +16,21 @@ namespace PixelLab.Editor
     public abstract class BasePanel
     {
         // -----------------------------------------------------------------------
+        // Shared design palette (matches DashboardPanel)
+        // -----------------------------------------------------------------------
+
+        protected static readonly Color BrandViolet = new Color(0.55f, 0.35f, 0.95f);
+        protected static readonly Color BrandCyan   = new Color(0.30f, 0.85f, 0.95f);
+        protected static readonly Color HeroBg      = new Color(0.13f, 0.13f, 0.17f);
+        protected static readonly Color MutedText   = new Color(0.70f, 0.70f, 0.78f);
+        protected static readonly Color BodyText    = new Color(0.92f, 0.92f, 0.96f);
+
+        protected const float SpaceXS = 4f;
+        protected const float SpaceS  = 8f;
+        protected const float SpaceM  = 12f;
+        protected const float SpaceL  = 16f;
+
+        // -----------------------------------------------------------------------
         // Protected state
         // -----------------------------------------------------------------------
 
@@ -30,6 +45,53 @@ namespace PixelLab.Editor
         protected List<Texture2D> ResultTextures = new List<Texture2D>();
         protected List<string>    SavedPaths     = new List<string>();
         protected string          _errorMessage  = "";
+
+        // -----------------------------------------------------------------------
+        // Shared lazy-initialized styles (instance, built inside Draw calls)
+        // -----------------------------------------------------------------------
+
+        private GUIStyle _sharedHeaderTitleStyle;
+        private GUIStyle _sharedHeaderSubStyle;
+        private GUIStyle _sharedSectionLabelStyle;
+        private GUIStyle _sharedPrimaryBtnStyle;
+        private bool     _sharedStylesReady;
+
+        private void EnsureSharedStyles()
+        {
+            if (_sharedStylesReady) return;
+            _sharedStylesReady = true;
+
+            _sharedHeaderTitleStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize  = 18,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                normal    = { textColor = BodyText },
+            };
+
+            _sharedHeaderSubStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 11,
+                wordWrap = true,
+                normal   = { textColor = MutedText },
+            };
+
+            _sharedSectionLabelStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 12,
+                normal   = { textColor = BodyText },
+            };
+
+            _sharedPrimaryBtnStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize  = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal    = { textColor = Color.white },
+                hover     = { textColor = Color.white },
+                active    = { textColor = Color.white },
+            };
+        }
 
         // -----------------------------------------------------------------------
         // Constructor
@@ -226,23 +288,71 @@ namespace PixelLab.Editor
         // -----------------------------------------------------------------------
 
         /// <summary>
-        /// 패널 상단 공통 헤더를 그립니다. Space(10) + boldLabel + Space(6).
+        /// Draws a styled panel header banner — dark background with left violet stripe,
+        /// title in large bold text, and an optional subtitle below.
         /// </summary>
-        protected void DrawPanelHeader(string title)
+        protected void DrawPanelHeader(string title, string subtitle = null)
         {
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
+            EnsureSharedStyles();
+
+            const float heroHeight = 64f;
+            Rect r = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none,
+                GUILayout.Height(heroHeight), GUILayout.ExpandWidth(true));
+
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(r, HeroBg);
+                EditorGUI.DrawRect(new Rect(r.x, r.y, 3, r.height), BrandViolet);
+            }
+
+            if (string.IsNullOrEmpty(subtitle))
+            {
+                Rect titleRect = new Rect(r.x + 16, r.y + (heroHeight - 22) * 0.5f, r.width - 28, 22);
+                GUI.Label(titleRect, title, _sharedHeaderTitleStyle);
+            }
+            else
+            {
+                Rect titleRect = new Rect(r.x + 16, r.y + 10, r.width - 28, 24);
+                GUI.Label(titleRect, title, _sharedHeaderTitleStyle);
+                Rect subRect = new Rect(r.x + 16, r.y + 34, r.width - 28, 20);
+                GUI.Label(subRect, subtitle, _sharedHeaderSubStyle);
+            }
         }
 
         /// <summary>
-        /// 섹션 소제목 헤더 (Space(8) + boldLabel + Space(4)).
+        /// Draws a styled section sub-header with BodyText colour.
         /// </summary>
         protected void DrawSectionHeader(string title)
         {
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            EnsureSharedStyles();
+            EditorGUILayout.Space(SpaceS);
+            EditorGUILayout.LabelField(title, _sharedSectionLabelStyle);
+            EditorGUILayout.Space(SpaceXS);
+        }
+
+        /// <summary>
+        /// Draws a BrandViolet-accented primary action button. Returns true when clicked.
+        /// Respects GUI.enabled — fades when disabled.
+        /// </summary>
+        protected bool DrawPrimaryButton(string label, float height = 32f)
+        {
+            EnsureSharedStyles();
+
+            Rect r = GUILayoutUtility.GetRect(GUIContent.none, _sharedPrimaryBtnStyle,
+                GUILayout.Height(height), GUILayout.ExpandWidth(true));
+
+            if (Event.current.type == EventType.Repaint)
+            {
+                Color c = GUI.enabled
+                    ? BrandViolet
+                    : new Color(BrandViolet.r, BrandViolet.g, BrandViolet.b, 0.38f);
+                EditorGUI.DrawRect(r, c);
+            }
+
+            if (r.Contains(Event.current.mousePosition) && GUI.enabled)
+                Window.Repaint();
+
+            return GUI.Button(r, label, _sharedPrimaryBtnStyle);
         }
 
         // Per-panel foldout state for optional sections (key = "panelType:label").

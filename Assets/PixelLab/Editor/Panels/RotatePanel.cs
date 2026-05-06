@@ -104,7 +104,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            DrawPanelHeader("Rotation");
+            DrawPanelHeader("Rotation", "4 & 8 directional views with isometric support.");
 
             if (!RequireClient())
             {
@@ -203,7 +203,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "Generate Rotation", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "Generate Rotation"))
                 RunSingleRotate();
             GUI.enabled = true;
         }
@@ -353,7 +353,7 @@ namespace PixelLab.Editor
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
-            if (GUILayout.Button(IsLoading ? LoadingMessage : "8-Direction Generation", GUILayout.Height(30)))
+            if (DrawPrimaryButton(IsLoading ? LoadingMessage : "8-Direction Generation"))
                 RunGenerate8Rotations();
             GUI.enabled = true;
         }

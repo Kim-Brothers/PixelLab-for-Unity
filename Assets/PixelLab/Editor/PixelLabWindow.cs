@@ -27,10 +27,10 @@ namespace PixelLab.Editor
         // Menu
         // -----------------------------------------------------------------------
 
-        [MenuItem("Tools/PixelLab")]
+        [MenuItem("Tools/PixelLab for Unity")]
         public static void ShowWindow()
         {
-            var window = GetWindow<PixelLabWindow>("PixelLab");
+            var window = GetWindow<PixelLabWindow>("PixelLab for Unity");
             window.minSize = new Vector2(600, 400);
             window.Show();
         }
@@ -54,7 +54,7 @@ namespace PixelLab.Editor
         private string _lastCostText = "";
 
         private int      _selectedPanel = 0;
-        private string[] _panelNames    = { "Dashboard", "Generate", "Character", "Animation", "Tileset", "Edit", "Rotation", "Objects", "Settings" };
+        private string[] _panelNames    = { "Dashboard", "Generate", "Character", "Animation", "Tileset", "Edit", "Rotation", "Objects", "Settings", "About" };
 
         private BasePanel[] _panels;
 
@@ -87,6 +87,7 @@ namespace PixelLab.Editor
                 new RotatePanel(this),      // 6 Rotation
                 new ObjectsPanel(this),     // 7 Objects
                 new SettingsPanel(this),    // 8 Settings
+                new AboutPanel(this),       // 9 About
             };
 
             // Restore settings and auto-connect if key exists
@@ -162,7 +163,7 @@ namespace PixelLab.Editor
 
             // Logo / title
             GUILayout.Space(8);
-            GUILayout.Label("PixelLab", EditorStyles.boldLabel);
+            GUILayout.Label("PixelLab for Unity", EditorStyles.boldLabel);
             GUILayout.Space(6);
 
             for (int i = 0; i < _panelNames.Length; i++)
