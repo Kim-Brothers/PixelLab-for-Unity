@@ -48,7 +48,7 @@ namespace PixelLab.Editor
         private string _lastCostText = "";
 
         private int      _selectedPanel = 0;
-        private string[] _panelNames    = { "Dashboard", "Generate", "Character", "Animation", "Tileset", "Edit", "Rotation", "Settings" };
+        private string[] _panelNames    = { "Dashboard", "Generate", "Character", "Animation", "Tileset", "Edit", "Rotation", "Objects", "Settings" };
 
         private BasePanel[] _panels;
 
@@ -79,7 +79,8 @@ namespace PixelLab.Editor
                 new TilesetPanel(this),     // 4 Tileset
                 new EditPanel(this),        // 5 Edit
                 new RotatePanel(this),      // 6 Rotation
-                new SettingsPanel(this),    // 7 Settings
+                new ObjectsPanel(this),     // 7 Objects
+                new SettingsPanel(this),    // 8 Settings
             };
 
             // Restore settings and auto-connect if key exists
@@ -208,6 +209,7 @@ namespace PixelLab.Editor
 
         private void HandleKeyboardNav()
         {
+            if (GUIUtility.keyboardControl != 0) return;
             Event e = Event.current;
             if (e.type != EventType.KeyDown) return;
 

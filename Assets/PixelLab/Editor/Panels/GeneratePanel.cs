@@ -21,8 +21,8 @@ namespace PixelLab.Editor
         // Model selector (Image type only)
         // -----------------------------------------------------------------------
 
-        private static readonly string[] ModelLabels = { "Pro", "PixFlux", "BitForge" };
-        private int _model = 0; // 0=Pro, 1=PixFlux, 2=BitForge
+        private static readonly string[] ModelLabels = { "Pro", "PixFlux", "Pixen", "BitForge" };
+        private int _model = 0; // 0=Pro, 1=PixFlux, 2=Pixen, 3=BitForge
 
         // -----------------------------------------------------------------------
         // Basic parameters
@@ -296,6 +296,9 @@ namespace PixelLab.Editor
                                 response = await Client.GenerateImagePixflux(desc, width, height, extra);
                                 break;
                             case 2:
+                                response = await Client.GenerateImagePixen(desc, width, height, extra);
+                                break;
+                            case 3:
                                 response = await Client.GenerateImageBitforge(desc, width, height, extra);
                                 break;
                             default:

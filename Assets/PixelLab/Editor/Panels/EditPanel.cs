@@ -30,12 +30,44 @@ namespace PixelLab.Editor
         private string    _inpaintDescription   = "";
 
         // -----------------------------------------------------------------------
+        // Tab 2 – ImageToPixelart
+        // -----------------------------------------------------------------------
+
+        private string    _pixelartSourcePath    = "";
+        private Texture2D _pixelartSourcePreview = null;
+        private int       _pixelartInputWidth    = 128;
+        private int       _pixelartInputHeight   = 128;
+        private int       _pixelartOutputWidth   = 64;
+        private int       _pixelartOutputHeight  = 64;
+
+        // -----------------------------------------------------------------------
+        // Tab 3 – Resize
+        // -----------------------------------------------------------------------
+
+        private string    _resizeRefImagePath    = "";
+        private Texture2D _resizeRefImagePreview = null;
+        private string    _resizeDescription     = "";
+        private int       _resizeRefWidth        = 64;
+        private int       _resizeRefHeight       = 64;
+        private int       _resizeTargetWidth     = 128;
+        private int       _resizeTargetHeight    = 128;
+
+        // -----------------------------------------------------------------------
+        // Tab 4 – RemoveBackground
+        // -----------------------------------------------------------------------
+
+        private string    _removeBgSourcePath    = "";
+        private Texture2D _removeBgSourcePreview = null;
+        private int       _removeBgWidth         = 128;
+        private int       _removeBgHeight        = 128;
+
+        // -----------------------------------------------------------------------
         // Shared UI state
         // -----------------------------------------------------------------------
 
         private int    _selectedTab  = 0;
 
-        private static readonly string[] TabNames = { "Image Edit", "Inpaint" };
+        private static readonly string[] TabNames = { "Image Edit", "Inpaint", "Pixelart", "Resize", "Remove BG" };
 
         // -----------------------------------------------------------------------
         // Constructor

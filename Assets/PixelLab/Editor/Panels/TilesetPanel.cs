@@ -241,7 +241,7 @@ namespace PixelLab.Editor
             RunAsync(
                 async () =>
                 {
-                    var extraParams = new JObject { ["tile_size"] = tileSize };
+                    var extraParams = new JObject { ["tile_size"] = new JObject { ["width"] = tileSize, ["height"] = tileSize } };
                     if (!string.IsNullOrEmpty(seedStr) && int.TryParse(seedStr, out int ssSeed))
                         extraParams["seed"] = ssSeed;
 

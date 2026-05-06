@@ -51,6 +51,13 @@ namespace PixelLab.Editor
         private string _actionStatus = "";
 
         // -----------------------------------------------------------------------
+        // Tag editing
+        // -----------------------------------------------------------------------
+
+        private string _editingTagsCharId = "";
+        private string _editingTagsValue  = "";
+
+        // -----------------------------------------------------------------------
         // Scratch fields for async→main-thread transfer
         // -----------------------------------------------------------------------
 
@@ -245,9 +252,38 @@ namespace PixelLab.Editor
                 {
                     ExportCharacterZip(ch.id);
                 }
+
+                // Edit Tags button
+                if (GUILayout.Button("Tags", EditorStyles.miniButton, GUILayout.Width(40)))
+                {
+                    _editingTagsCharId = ch.id;
+                    _editingTagsValue  = ""; // user types new tags
+                }
                 GUI.enabled = true;
 
                 EditorGUILayout.EndHorizontal();
+
+                // Inline tag editor
+                if (_editingTagsCharId == ch.id)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("Tags (comma-separated):", GUILayout.Width(160));
+                    _editingTagsValue = EditorGUILayout.TextField(_editingTagsValue, GUILayout.ExpandWidth(true));
+                    if (GUILayout.Button("Save", EditorStyles.miniButton, GUILayout.Width(48)))
+                    {
+                        string[] newTags = _editingTagsValue
+                            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        for (int ti = 0; ti < newTags.Length; ti++)
+                            newTags[ti] = newTags[ti].Trim();
+                        SaveCharacterTags(ch.id, newTags);
+                        _editingTagsCharId = "";
+                    }
+                    if (GUILayout.Button("Cancel", EditorStyles.miniButton, GUILayout.Width(52)))
+                    {
+                        _editingTagsCharId = "";
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
 
                 EditorGUILayout.EndVertical();
                 EditorGUILayout.Space(2);
@@ -478,6 +514,32 @@ namespace PixelLab.Editor
         {
             Rect r = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none, GUILayout.Height(1), GUILayout.ExpandWidth(true));
             EditorGUI.DrawRect(r, new Color(0.35f, 0.35f, 0.35f));
+        }
+
+        // -----------------------------------------------------------------------
+        // Async: Save character tags
+        // -----------------------------------------------------------------------
+
+        private void SaveCharacterTags(string characterId, string[] tags)
+        {
+            LoadingMessage = "Saving tags...";
+            string idSnapshot   = characterId;
+            string[] tagsSnapshot = tags;
+
+            RunAsync(
+                async () =>
+                {
+                    await Client.UpdateCharacterTags(idSnapshot, tagsSnapshot);
+                },
+                onComplete: () =>
+                {
+                    _actionStatus = "Tags updated successfully.";
+                },
+                onError: ex =>
+                {
+                    _listError = $"Failed to update tags: {ex.Message}";
+                }
+            );
         }
     }
 }

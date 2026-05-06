@@ -628,9 +628,7 @@ namespace PixelLab.Editor
             {
                 ["image"] = image,
                 ["description"] = description,
-                ["image_size"] = ImageSize(width, height),
-                ["width"] = width,
-                ["height"] = height
+                ["image_size"] = ImageSize(width, height)
             };
             MergeExtras(payload, extraParams);
             return PostJson("/edit-image", payload);
