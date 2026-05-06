@@ -26,6 +26,10 @@ namespace PixelLab.Editor
         private string _seed           = "";
         private bool   _isometric      = false;
 
+        // Optional reference image for character creation
+        private string    _refImagePath    = "";
+        private Texture2D _refImagePreview = null;
+
         private static readonly string[] DirectionLabels = { "4-Direction", "8-Direction" };
         private static readonly string[] ViewOptions     = { "side", "low top-down", "high top-down", "perspective" };
         private static readonly string[] TemplateOptions = { "mannequin", "bear", "cat", "dog", "horse", "lion" };
@@ -41,6 +45,11 @@ namespace PixelLab.Editor
             = new List<(string, string, string)>();
 
         private Vector2 _listScrollPos;
+
+        // Pagination
+        private int _pageSize      = 20;
+        private int _pageOffset    = 0;
+        private int _lastPageCount = 0;
 
         // -----------------------------------------------------------------------
         // Error / status messages
@@ -78,9 +87,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("Character Generation / Management", EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
+            DrawPanelHeader("Character Generation / Management");
 
             if (!RequireClient())
             {
@@ -105,8 +112,7 @@ namespace PixelLab.Editor
 
         private void DrawCreateSection()
         {
-            EditorGUILayout.LabelField("Create Character", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            DrawSectionHeader("Create Character");
 
             // Description
             EditorGUILayout.LabelField("Description");
@@ -142,6 +148,11 @@ namespace PixelLab.Editor
             _seed = EditorGUILayout.TextField(_seed, GUILayout.Width(80));
             EditorGUILayout.EndHorizontal();
 
+            // Optional reference image (collapsed by default)
+            EditorGUILayout.Space(4);
+            if (DrawOptionalFoldout("Reference Image (optional)"))
+                DrawImagePicker("Reference Image", ref _refImagePath, ref _refImagePreview, 60);
+
             // Error message
             if (!string.IsNullOrEmpty(_createError))
             {
@@ -174,7 +185,25 @@ namespace PixelLab.Editor
 
         private void DrawListSection()
         {
-            EditorGUILayout.LabelField("Character List", EditorStyles.boldLabel);
+            DrawSectionHeader("Character List");
+
+            // Pagination controls
+            EditorGUILayout.BeginHorizontal();
+            GUI.enabled = !IsLoading && _pageOffset > 0;
+            if (GUILayout.Button("Prev", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _pageOffset = Mathf.Max(0, _pageOffset - _pageSize);
+                RefreshCharacterList();
+            }
+            GUI.enabled = !IsLoading && _lastPageCount >= _pageSize;
+            if (GUILayout.Button("Next", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _pageOffset += _pageSize;
+                RefreshCharacterList();
+            }
+            GUI.enabled = true;
+            EditorGUILayout.LabelField($"Showing {_pageOffset}–{_pageOffset + _lastPageCount}", EditorStyles.miniLabel);
+            EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(4);
 
             // Refresh button
@@ -318,6 +347,7 @@ namespace PixelLab.Editor
             int    shadingIdx  = _shadingIndex;
             string seedStr     = _seed;
             bool   isometric   = _isometric;
+            string refImagePath = _refImagePath;
 
             LoadingMessage = "Generating character...";
             ClearResults();
@@ -333,6 +363,11 @@ namespace PixelLab.Editor
                     if (shadingIdx != 0) extraParams["shading"] = ShadingOptions[shadingIdx];
                     if (isometric) extraParams["isometric"] = true;
                     if (!string.IsNullOrEmpty(seedStr) && int.TryParse(seedStr, out int seedVal)) extraParams["seed"] = seedVal;
+
+                    // Optional reference image — matches AnimationPanel pattern (plain ImageData, no size wrapper)
+                    if (!string.IsNullOrEmpty(refImagePath))
+                        extraParams["reference_image"] = JObject.Parse(ImageUtils.ImageToBase64Json(refImagePath));
+
                     JObject extraOrNull = extraParams.Count > 0 ? extraParams : null;
 
                     JObject response = dirType == 0
@@ -374,10 +409,13 @@ namespace PixelLab.Editor
         {
             LoadingMessage = "Loading list...";
 
+            int pageSize   = _pageSize;
+            int pageOffset = _pageOffset;
+
             RunAsync(
                 async () =>
                 {
-                    JObject result = await Client.ListCharacters(20, 0);
+                    JObject result = await Client.ListCharacters(pageSize, pageOffset);
 
                     var list = new List<(string id, string description, string createdAt)>();
                     JArray data = result["data"] as JArray;
@@ -396,8 +434,9 @@ namespace PixelLab.Editor
                 },
                 onComplete: () =>
                 {
-                    _characters = _pendingCharacters;
-                    _listError  = "";
+                    _characters    = _pendingCharacters;
+                    _lastPageCount = _pendingCharacters.Count;
+                    _listError     = "";
                 },
                 onError: ex =>
                 {
@@ -413,14 +452,16 @@ namespace PixelLab.Editor
         private void DeleteCharacter(string characterId)
         {
             LoadingMessage = "Deleting...";
-            string idSnapshot = characterId;
+            string idSnapshot  = characterId;
+            int    pageSize    = _pageSize;
+            int    pageOffset  = _pageOffset;
 
             RunAsync(
                 async () =>
                 {
                     await Client.DeleteCharacter(idSnapshot);
-                    // Refresh the list on the background thread
-                    JObject result = await Client.ListCharacters(20, 0);
+                    // Refresh the list on the background thread (stay on current page)
+                    JObject result = await Client.ListCharacters(pageSize, pageOffset);
 
                     var list = new List<(string id, string description, string createdAt)>();
                     JArray data = result["data"] as JArray;
@@ -439,9 +480,10 @@ namespace PixelLab.Editor
                 },
                 onComplete: () =>
                 {
-                    _characters   = _pendingCharacters;
-                    _actionStatus = "Character deleted successfully.";
-                    _listError    = "";
+                    _characters    = _pendingCharacters;
+                    _lastPageCount = _pendingCharacters.Count;
+                    _actionStatus  = "Character deleted successfully.";
+                    _listError     = "";
                 },
                 onError: ex =>
                 {
@@ -508,12 +550,6 @@ namespace PixelLab.Editor
                 width  = w;
                 height = h;
             }
-        }
-
-        private static void DrawDivider()
-        {
-            Rect r = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none, GUILayout.Height(1), GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(r, new Color(0.35f, 0.35f, 0.35f));
         }
 
         // -----------------------------------------------------------------------

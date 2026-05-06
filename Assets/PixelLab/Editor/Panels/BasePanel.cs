@@ -91,6 +91,11 @@ namespace PixelLab.Editor
                         IsLoading = false;
                         onComplete?.Invoke();
                         Window.Repaint();
+                        // Refresh balance after every successful operation. DashboardPanel
+                        // subscribes to OnBalanceRefreshRequested. Skip self-refresh for
+                        // DashboardPanel itself to avoid recursion.
+                        if (!(this is DashboardPanel))
+                            Window.RefreshBalance();
                     };
                 }
                 catch (Exception ex)
@@ -217,6 +222,57 @@ namespace PixelLab.Editor
         }
 
         // -----------------------------------------------------------------------
+        // Common UI helpers
+        // -----------------------------------------------------------------------
+
+        /// <summary>
+        /// 패널 상단 공통 헤더를 그립니다. Space(10) + boldLabel + Space(6).
+        /// </summary>
+        protected void DrawPanelHeader(string title)
+        {
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            EditorGUILayout.Space(6);
+        }
+
+        /// <summary>
+        /// 섹션 소제목 헤더 (Space(8) + boldLabel + Space(4)).
+        /// </summary>
+        protected void DrawSectionHeader(string title)
+        {
+            EditorGUILayout.Space(8);
+            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            EditorGUILayout.Space(4);
+        }
+
+        // Per-panel foldout state for optional sections (key = "panelType:label").
+        private static readonly Dictionary<string, bool> _optionalFoldoutState =
+            new Dictionary<string, bool>();
+
+        /// <summary>
+        /// Optional 섹션을 접을 수 있는 foldout으로 감쌉니다. 기본 닫힘.
+        /// 사용: <c>if (DrawOptionalFoldout("Reference Image")) { ...optional UI... }</c>
+        /// </summary>
+        protected bool DrawOptionalFoldout(string label)
+        {
+            string key = GetType().Name + ":" + label;
+            bool open = _optionalFoldoutState.TryGetValue(key, out bool v) && v;
+            bool nowOpen = EditorGUILayout.Foldout(open, label, true);
+            if (nowOpen != open) _optionalFoldoutState[key] = nowOpen;
+            return nowOpen;
+        }
+
+        /// <summary>
+        /// 1px 구분선을 그립니다. CharacterPanel/ObjectsPanel의 private DrawDivider()를 대체.
+        /// </summary>
+        protected static void DrawDivider()
+        {
+            Rect r = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none,
+                GUILayout.Height(1), GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(r, new Color(0.35f, 0.35f, 0.35f));
+        }
+
+        // -----------------------------------------------------------------------
         // Drag-and-drop helper
         // -----------------------------------------------------------------------
 
@@ -252,51 +308,85 @@ namespace PixelLab.Editor
         // -----------------------------------------------------------------------
 
         /// <summary>
-        /// Draws a labeled image-picker row: thumbnail, path text field, Browse
-        /// button, and a drag-drop zone.
+        /// Draws a labeled image-picker using a Unity-native ObjectField (supports drag-and-drop
+        /// from the Project window and the built-in asset picker), plus an optional path text
+        /// field and Browse button for files outside the Assets/ folder.
         /// Updates <paramref name="path"/> and <paramref name="preview"/> in-place.
         /// </summary>
-        /// <param name="label">Field label shown to the left.</param>
+        /// <param name="label">Field label shown above the picker.</param>
         /// <param name="path">Current asset / file path (updated by this method).</param>
         /// <param name="preview">Cached preview texture (updated by this method).</param>
-        /// <param name="height">Height of the thumbnail / drop zone in pixels.</param>
+        /// <param name="height">Height of the ObjectField thumbnail in pixels.</param>
+        // Tracks per-picker "show advanced (Path/Browse)" foldout state, keyed by label.
+        private static readonly Dictionary<string, bool> _imagePickerAdvancedFoldout =
+            new Dictionary<string, bool>();
+
         protected void DrawImagePicker(string label, ref string path, ref Texture2D preview, float height = 60)
         {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            DrawImagePicker(label, ref path, ref preview, null, height);
+        }
 
-            EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
-
+        /// <summary>
+        /// Image picker with an optional trailing action (e.g. a Remove button) drawn on
+        /// the same row. Use this overload instead of wrapping <see cref="DrawImagePicker"/>
+        /// in your own BeginHorizontal — nested horizontal groups break IMGUI layout.
+        /// </summary>
+        protected void DrawImagePicker(string label, ref string path, ref Texture2D preview,
+            Action trailing, float height = 60)
+        {
+            // Compact single-line layout: [label] [ObjectField] [▸ advanced toggle] [trailing?]
             EditorGUILayout.BeginHorizontal();
 
-            // ---- Thumbnail / drop zone ----
-            Rect thumbRect = GUILayoutUtility.GetRect(height, height,
-                GUILayout.Width(height), GUILayout.Height(height));
+            // Label on the left, fixed width so multiple pickers align
+            EditorGUILayout.LabelField(label, GUILayout.Width(120));
 
-            if (preview != null)
+            // Lazy-load preview from path if needed
+            if (preview == null && !string.IsNullOrEmpty(path) &&
+                path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
             {
-                GUI.DrawTexture(thumbRect, preview, ScaleMode.ScaleToFit);
+                preview = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             }
-            else
+
+            // Texture2D-typed ObjectField: Unity's picker dialog will only list Texture2D
+            // assets (no scripts, prefabs, materials, etc). Default single-line height —
+            // explicit Height triggers the large thumbnail mode and breaks the row.
+            Texture2D newTex = (Texture2D)EditorGUILayout.ObjectField(
+                preview, typeof(Texture2D), false);
+
+            if (newTex != preview)
             {
-                EditorGUI.DrawRect(thumbRect, new Color(0.25f, 0.25f, 0.25f));
-                GUI.Label(thumbRect, "Drag\nor Select", new GUIStyle(EditorStyles.centeredGreyMiniLabel)
+                preview = newTex;
+                if (newTex == null)
                 {
-                    alignment = TextAnchor.MiddleCenter
-                });
+                    path = "";
+                }
+                else
+                {
+                    string assetPath = AssetDatabase.GetAssetPath(newTex);
+                    if (!string.IsNullOrEmpty(assetPath)) path = assetPath;
+                }
             }
 
-            // Handle drag-and-drop onto the thumbnail area
-            string dragged = GetDraggedImagePath(thumbRect);
-            if (dragged != null)
+            // Advanced toggle (▸/▾) — shows Path field + Browse button below
+            string foldoutKey = label ?? "";
+            bool showAdvanced = _imagePickerAdvancedFoldout.TryGetValue(foldoutKey, out bool v) && v;
+            string arrow = showAdvanced ? "▾" : "▸";
+            if (GUILayout.Button(arrow, EditorStyles.miniButton, GUILayout.Width(22)))
             {
-                path    = dragged;
-                preview = LoadTexture(path);
+                showAdvanced = !showAdvanced;
+                _imagePickerAdvancedFoldout[foldoutKey] = showAdvanced;
             }
 
-            GUILayout.Space(4);
+            // Caller-supplied trailing widget on the same row (e.g. "Remove" button)
+            trailing?.Invoke();
 
-            // ---- Path + Browse button ----
-            EditorGUILayout.BeginVertical();
+            EditorGUILayout.EndHorizontal();
+
+            // Advanced row: editable Path TextField + Browse button (hidden by default)
+            if (!showAdvanced) return;
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Path", GUILayout.Width(36));
 
             string newPath = EditorGUILayout.TextField(path ?? "");
             if (newPath != path)
@@ -305,7 +395,7 @@ namespace PixelLab.Editor
                 preview = LoadTexture(path);
             }
 
-            if (GUILayout.Button("Browse...", GUILayout.Height(22)))
+            if (GUILayout.Button("Browse...", GUILayout.Width(70), GUILayout.Height(18)))
             {
                 string startDir = string.IsNullOrEmpty(path)
                     ? Application.dataPath
@@ -320,18 +410,15 @@ namespace PixelLab.Editor
                     string normalized  = selected.Replace('\\', '/');
                     string projectRoot = dataPath.Substring(0, dataPath.Length - "Assets".Length);
 
-                    if (normalized.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
-                        path = normalized.Substring(projectRoot.Length);
-                    else
-                        path = normalized;
+                    path = normalized.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase)
+                        ? normalized.Substring(projectRoot.Length)
+                        : normalized;
 
                     preview = LoadTexture(path);
                 }
             }
 
-            EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
-            EditorGUILayout.EndVertical();
         }
     }
 }

@@ -48,6 +48,22 @@ namespace PixelLab.Editor
         private int    _proViewIndex = 0;
         private string _proSeed      = "";
 
+        // Optional style images for Tiles Pro (max 4)
+        private List<string>    _proStyleImagePaths    = new List<string>();
+        private List<Texture2D> _proStyleImagePreviews = new List<Texture2D>();
+
+        // -----------------------------------------------------------------------
+        // Tab 4 – Browse (ListTilesets / ListIsometricTiles)
+        // -----------------------------------------------------------------------
+
+        private List<(string id, string desc, string created)> _tilesets    = new List<(string, string, string)>();
+        private List<(string id, string desc, string created)> _isoTiles    = new List<(string, string, string)>();
+        private Vector2 _browseScroll;
+        private int     _browseSubTab    = 0;
+        private int     _browsePageSize  = 20;
+        private int     _browsePageOffset = 0;
+        private int     _browseLastCount = 0;
+
         private static readonly string[] TileTypeOptions    = { "square_topdown", "hex", "hex_pointy", "isometric", "octagon" };
         private static readonly string[] TileSizeOptions    = { "16", "32" };
         private static readonly string[] TopDownViewOptions = { "low top-down", "high top-down" };
@@ -65,7 +81,8 @@ namespace PixelLab.Editor
             "Top-Down",
             "Side-Scroller",
             "Isometric",
-            "Pro"
+            "Pro",
+            "Browse"
         };
 
         // -----------------------------------------------------------------------
@@ -80,13 +97,15 @@ namespace PixelLab.Editor
 
         public override void Draw()
         {
-            if (!RequireClient()) return;
-
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("Generate Tileset", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            DrawPanelHeader("Generate Tileset");
+
+            if (!RequireClient())
+            {
+                EditorGUILayout.EndScrollView();
+                return;
+            }
 
             int newTab = GUILayout.Toolbar(_selectedTab, TabNames);
             if (newTab != _selectedTab)
@@ -104,15 +123,19 @@ namespace PixelLab.Editor
                 case 1: DrawSideScroller();   break;
                 case 2: DrawIsometric();      break;
                 case 3: DrawPro();            break;
+                case 4: DrawBrowse();         break;
             }
 
-            if (!string.IsNullOrEmpty(_errorMessage))
+            if (_selectedTab != 4)
             {
-                EditorGUILayout.Space(4);
-                EditorGUILayout.HelpBox(_errorMessage, MessageType.Error);
-            }
+                if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    EditorGUILayout.Space(4);
+                    EditorGUILayout.HelpBox(_errorMessage, MessageType.Error);
+                }
 
-            DrawImagePreviews(160);
+                DrawImagePreviews(160);
+            }
 
             EditorGUILayout.EndScrollView();
         }
@@ -379,6 +402,40 @@ namespace PixelLab.Editor
             _proSeed = EditorGUILayout.TextField(_proSeed, GUILayout.Width(80));
             EditorGUILayout.EndHorizontal();
 
+            // Optional style images (max 4) — collapsed by default
+            EditorGUILayout.Space(4);
+            if (DrawOptionalFoldout("Style Images (optional, max 4)"))
+            {
+                int removeProStyleIdx = -1;
+                for (int i = 0; i < _proStyleImagePaths.Count; i++)
+                {
+                    int idx = i;
+                    string    path = _proStyleImagePaths[i];
+                    Texture2D prev = _proStyleImagePreviews[i];
+                    DrawImagePicker($"Style {i + 1}", ref path, ref prev, () =>
+                    {
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                            removeProStyleIdx = idx;
+                    }, 60);
+                    _proStyleImagePaths[i]    = path;
+                    _proStyleImagePreviews[i] = prev;
+                }
+                if (removeProStyleIdx >= 0)
+                {
+                    _proStyleImagePaths.RemoveAt(removeProStyleIdx);
+                    _proStyleImagePreviews.RemoveAt(removeProStyleIdx);
+                }
+
+                if (_proStyleImagePaths.Count < 4)
+                {
+                    if (GUILayout.Button("+ Add Style Image", GUILayout.Height(24)))
+                    {
+                        _proStyleImagePaths.Add("");
+                        _proStyleImagePreviews.Add(null);
+                    }
+                }
+            }
+
             EditorGUILayout.Space(8);
 
             GUI.enabled = !IsLoading;
@@ -400,6 +457,9 @@ namespace PixelLab.Editor
             string seedStr     = _proSeed;
             string outputDir   = Window.OutputDir;
 
+            // Snapshot style image paths for background thread
+            var proStylePathsSnapshot = new List<string>(_proStyleImagePaths);
+
             List<string> paths = null;
 
             RunAsync(
@@ -412,6 +472,24 @@ namespace PixelLab.Editor
                         extraParams["tile_size"] = tileSize;
                     if (!string.IsNullOrEmpty(seedStr) && int.TryParse(seedStr, out int proSeed))
                         extraParams["seed"] = proSeed;
+
+                    // Build style_images array when any paths are set
+                    var styleArray = new JArray();
+                    foreach (string sp in proStylePathsSnapshot)
+                    {
+                        if (!string.IsNullOrEmpty(sp))
+                        {
+                            JObject imgData = JObject.Parse(ImageUtils.ImageToBase64Json(sp));
+                            ImageUtils.GetImageSize(sp, out int sw, out int sh);
+                            styleArray.Add(new JObject
+                            {
+                                ["image"]  = imgData,
+                                ["size"]   = new JObject { ["width"] = sw, ["height"] = sh }
+                            });
+                        }
+                    }
+                    if (styleArray.Count > 0)
+                        extraParams["style_images"] = styleArray;
 
                     JObject result = await Client.CreateTilesPro(desc, tileType, extraParams);
 
@@ -435,6 +513,201 @@ namespace PixelLab.Editor
                     }
                 },
                 ex => { _errorMessage = $"Error: {ex.Message}"; }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Tab 4 – Browse
+        // -----------------------------------------------------------------------
+
+        private static readonly string[] BrowseSubTabNames = { "Tilesets", "Isometric Tiles" };
+
+        private void DrawBrowse()
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Browse Existing Tiles", EditorStyles.boldLabel);
+            EditorGUILayout.Space(4);
+
+            // Sub-toolbar: Tilesets / Isometric Tiles
+            int newSub = GUILayout.Toolbar(_browseSubTab, BrowseSubTabNames);
+            if (newSub != _browseSubTab)
+            {
+                _browseSubTab     = newSub;
+                _browsePageOffset = 0;
+                _browseLastCount  = 0;
+                _errorMessage     = "";
+            }
+
+            EditorGUILayout.Space(6);
+
+            // Pagination + Refresh row
+            EditorGUILayout.BeginHorizontal();
+
+            GUI.enabled = !IsLoading && _browsePageOffset > 0;
+            if (GUILayout.Button("Prev", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _browsePageOffset = Mathf.Max(0, _browsePageOffset - _browsePageSize);
+                RefreshBrowseList();
+            }
+
+            GUI.enabled = !IsLoading && _browseLastCount >= _browsePageSize;
+            if (GUILayout.Button("Next", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _browsePageOffset += _browsePageSize;
+                RefreshBrowseList();
+            }
+
+            GUI.enabled = true;
+            EditorGUILayout.LabelField(
+                $"Showing {_browsePageOffset}–{_browsePageOffset + _browseLastCount}",
+                EditorStyles.miniLabel);
+
+            GUILayout.FlexibleSpace();
+
+            GUI.enabled = !IsLoading;
+            if (GUILayout.Button("Refresh", GUILayout.Width(64)))
+            {
+                _errorMessage = "";
+                RefreshBrowseList();
+            }
+            GUI.enabled = true;
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(4);
+
+            // Error / loading feedback
+            if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                EditorGUILayout.HelpBox(_errorMessage, MessageType.Error);
+                EditorGUILayout.Space(4);
+            }
+
+            // List
+            List<(string id, string desc, string created)> list =
+                _browseSubTab == 0 ? _tilesets : _isoTiles;
+
+            if (list.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "List is empty. Press Refresh to load.",
+                    MessageType.None);
+            }
+            else
+            {
+                string outputDir = Window.OutputDir;
+
+                _browseScroll = EditorGUILayout.BeginScrollView(_browseScroll,
+                    GUILayout.MaxHeight(400));
+
+                foreach (var entry in list.ToArray())
+                {
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+                    // ID + description row
+                    EditorGUILayout.BeginHorizontal();
+                    string displayId = entry.id.Length > 24
+                        ? entry.id.Substring(0, 21) + "..."
+                        : entry.id;
+                    EditorGUILayout.LabelField(displayId, EditorStyles.boldLabel, GUILayout.Width(160));
+                    string displayDesc = entry.desc.Length > 40
+                        ? entry.desc.Substring(0, 37) + "..."
+                        : entry.desc;
+                    EditorGUILayout.LabelField(displayDesc, GUILayout.ExpandWidth(true));
+                    EditorGUILayout.EndHorizontal();
+
+                    // Created at + Get Details button
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField(entry.created, EditorStyles.miniLabel, GUILayout.Width(160));
+                    GUILayout.FlexibleSpace();
+
+                    GUI.enabled = !IsLoading;
+                    if (GUILayout.Button("Get Details", EditorStyles.miniButton, GUILayout.Width(80)))
+                    {
+                        string idSnap      = entry.id;
+                        int    subTabSnap  = _browseSubTab;
+                        List<string> paths = null;
+
+                        RunAsync(
+                            async () =>
+                            {
+                                JObject result = subTabSnap == 0
+                                    ? await Client.GetTileset(idSnap)
+                                    : await Client.GetIsometricTile(idSnap);
+
+                                paths = ImageUtils.SaveImagesFromResponseJson(
+                                    result.ToString(), outputDir, "tileset-detail");
+                            },
+                            () =>
+                            {
+                                if (paths != null)
+                                {
+                                    SavedPaths.AddRange(paths);
+                                    foreach (string p in paths)
+                                    {
+                                        Texture2D tex = LoadTexture(p);
+                                        if (tex != null) ResultTextures.Add(tex);
+                                    }
+                                }
+                            },
+                            ex => { _errorMessage = $"Get Details failed: {ex.Message}"; }
+                        );
+                    }
+                    GUI.enabled = true;
+
+                    EditorGUILayout.EndHorizontal();
+                    EditorGUILayout.EndVertical();
+                    EditorGUILayout.Space(2);
+                }
+
+                EditorGUILayout.EndScrollView();
+
+                // Show detail image previews below the list
+                DrawImagePreviews(160);
+            }
+        }
+
+        private void RefreshBrowseList()
+        {
+            int  subTab  = _browseSubTab;
+            int  limit   = _browsePageSize;
+            int  offset  = _browsePageOffset;
+
+            LoadingMessage = "Loading list...";
+
+            List<(string, string, string)> pending = null;
+
+            RunAsync(
+                async () =>
+                {
+                    JObject result = subTab == 0
+                        ? await Client.ListTilesets(limit, offset)
+                        : await Client.ListIsometricTiles(limit, offset);
+
+                    var list = new List<(string, string, string)>();
+                    JArray data = result["data"] as JArray;
+                    if (data != null)
+                    {
+                        foreach (JToken item in data)
+                        {
+                            string id        = item["id"]?.ToString()          ?? "";
+                            string desc      = item["description"]?.ToString() ?? "";
+                            string createdAt = item["created_at"]?.ToString()  ?? "";
+                            list.Add((id, desc, createdAt));
+                        }
+                    }
+                    pending = list;
+                },
+                () =>
+                {
+                    if (subTab == 0)
+                        _tilesets = pending ?? new List<(string, string, string)>();
+                    else
+                        _isoTiles = pending ?? new List<(string, string, string)>();
+
+                    _browseLastCount = pending?.Count ?? 0;
+                    _errorMessage    = "";
+                },
+                ex => { _errorMessage = $"Failed to load list: {ex.Message}"; }
             );
         }
     }

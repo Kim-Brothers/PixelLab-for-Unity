@@ -94,7 +94,7 @@ namespace PixelLab.Editor
             }
 
             var saved = SaveImagesFromData(root, absOutputDir, prefix);
-            RefreshAssets(absOutputDir);
+            RefreshAssetsMainThread(absOutputDir);
             return saved;
         }
 
@@ -438,7 +438,25 @@ namespace PixelLab.Editor
         }
 
         /// <summary>
+        /// Trigger an AssetDatabase.Refresh for output directory on the main thread.
+        /// Safe to call from background threads — defers via EditorApplication.delayCall.
+        /// </summary>
+        public static void RefreshAssetsMainThread(string dir)
+        {
+            if (string.IsNullOrEmpty(dir))
+                return;
+
+            string absDir = ResolveAbsolutePath(dir);
+            EditorApplication.delayCall += () =>
+            {
+                if (Directory.Exists(absDir))
+                    AssetDatabase.Refresh(ImportAssetOptions.Default);
+            };
+        }
+
+        /// <summary>
         /// Trigger an AssetDatabase.Refresh for output directory.
+        /// Must be called from the main thread.
         /// </summary>
         public static void RefreshAssets(string dir)
         {

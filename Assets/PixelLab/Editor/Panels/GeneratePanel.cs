@@ -63,9 +63,18 @@ namespace PixelLab.Editor
         private List<Texture2D> _styleImagePreviews = new List<Texture2D>();
 
         // -----------------------------------------------------------------------
-        // Error display
+        // Reference images (Pro model / Image type only, up to 4)
         // -----------------------------------------------------------------------
 
+        private List<string>    _referenceImagePaths    = new List<string>();
+        private List<Texture2D> _referenceImagePreviews = new List<Texture2D>();
+
+        // -----------------------------------------------------------------------
+        // BitForge style_image (single, optional)
+        // -----------------------------------------------------------------------
+
+        private string    _bitforgeStylePath    = "";
+        private Texture2D _bitforgeStylePreview = null;
 
         // -----------------------------------------------------------------------
         // Scratch fields for async→main-thread transfer
@@ -74,6 +83,7 @@ namespace PixelLab.Editor
         private List<string> _pendingSavedPaths = new List<string>();
         private float        _pendingUsd        = 0f;
         private float        _pendingCredits    = 0f;
+        private string       _pendingUsageText  = "";
 
         // -----------------------------------------------------------------------
         // Constructor
@@ -89,9 +99,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("Image Generation", EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
+            DrawPanelHeader("Image Generation");
 
             if (!RequireClient())
             {
@@ -159,24 +167,24 @@ namespace PixelLab.Editor
             {
                 EditorGUILayout.LabelField("Style Images (Max 4)", EditorStyles.boldLabel);
 
+                int removeStyleIdx = -1;
                 for (int i = 0; i < _styleImagePaths.Count; i++)
                 {
-                    EditorGUILayout.BeginHorizontal();
-
+                    int idx = i;
                     string path    = _styleImagePaths[i];
                     Texture2D prev = _styleImagePreviews[i];
-                    DrawImagePicker($"Style {i + 1}", ref path, ref prev, 60);
+                    DrawImagePicker($"Style {i + 1}", ref path, ref prev, () =>
+                    {
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                            removeStyleIdx = idx;
+                    }, 60);
                     _styleImagePaths[i]    = path;
                     _styleImagePreviews[i] = prev;
-
-                    if (GUILayout.Button("Remove", GUILayout.Width(54), GUILayout.Height(22)))
-                    {
-                        _styleImagePaths.RemoveAt(i);
-                        _styleImagePreviews.RemoveAt(i);
-                        break; // list changed — redraw next frame
-                    }
-
-                    EditorGUILayout.EndHorizontal();
+                }
+                if (removeStyleIdx >= 0)
+                {
+                    _styleImagePaths.RemoveAt(removeStyleIdx);
+                    _styleImagePreviews.RemoveAt(removeStyleIdx);
                 }
 
                 if (_styleImagePaths.Count < 4)
@@ -185,6 +193,48 @@ namespace PixelLab.Editor
                     {
                         _styleImagePaths.Add("");
                         _styleImagePreviews.Add(null);
+                    }
+                }
+
+                EditorGUILayout.Space(4);
+            }
+
+            // BitForge style image — only for BitForge model (genType==0, model==3), collapsed
+            if (_genType == 0 && _model == 3 && DrawOptionalFoldout("Style Image (optional)"))
+            {
+                DrawImagePicker("Style Image", ref _bitforgeStylePath, ref _bitforgeStylePreview, 60);
+                EditorGUILayout.Space(4);
+            }
+
+            // Reference images — only for Pro model (genType==0, model==0), collapsed
+            if (_genType == 0 && _model == 0 && DrawOptionalFoldout("Reference Images (Max 4, optional)"))
+            {
+                int removeRefIdx = -1;
+                for (int i = 0; i < _referenceImagePaths.Count; i++)
+                {
+                    int idx = i;
+                    string path    = _referenceImagePaths[i];
+                    Texture2D prev = _referenceImagePreviews[i];
+                    DrawImagePicker($"Ref {i + 1}", ref path, ref prev, () =>
+                    {
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                            removeRefIdx = idx;
+                    }, 60);
+                    _referenceImagePaths[i]    = path;
+                    _referenceImagePreviews[i] = prev;
+                }
+                if (removeRefIdx >= 0)
+                {
+                    _referenceImagePaths.RemoveAt(removeRefIdx);
+                    _referenceImagePreviews.RemoveAt(removeRefIdx);
+                }
+
+                if (_referenceImagePaths.Count < 4)
+                {
+                    if (GUILayout.Button("+ Add Reference Image", GUILayout.Height(24)))
+                    {
+                        _referenceImagePaths.Add("");
+                        _referenceImagePreviews.Add(null);
                     }
                 }
 
@@ -258,6 +308,12 @@ namespace PixelLab.Editor
             // Snapshot style image paths
             var stylePathsSnapshot = new List<string>(_styleImagePaths);
 
+            // Snapshot reference image paths (Pro model only)
+            var refPathsSnapshot = new List<string>(_referenceImagePaths);
+
+            // Snapshot BitForge style image path
+            string bitforgeStylePath = _bitforgeStylePath;
+
             LoadingMessage = "Generating image...";
             ClearResults();
 
@@ -299,9 +355,33 @@ namespace PixelLab.Editor
                                 response = await Client.GenerateImagePixen(desc, width, height, extra);
                                 break;
                             case 3:
+                                // Attach style_image when provided
+                                if (!string.IsNullOrEmpty(bitforgeStylePath))
+                                {
+                                    JObject styleImgData = JObject.Parse(ImageUtils.ImageToBase64Json(bitforgeStylePath));
+                                    ImageUtils.GetImageSize(bitforgeStylePath, out int styleW, out int styleH);
+                                    extra["style_image"] = new JObject
+                                    {
+                                        ["image"]  = styleImgData,
+                                        ["size"]   = new JObject { ["width"] = styleW, ["height"] = styleH }
+                                    };
+                                }
                                 response = await Client.GenerateImageBitforge(desc, width, height, extra);
                                 break;
                             default:
+                                // Pro model — attach reference_images if provided
+                                var refsArray = new JArray();
+                                foreach (string rp in refPathsSnapshot)
+                                {
+                                    if (!string.IsNullOrEmpty(rp))
+                                    {
+                                        JObject imgData = JObject.Parse(ImageUtils.ImageToBase64Json(rp));
+                                        ImageUtils.GetImageSize(rp, out int refW, out int refH);
+                                        refsArray.Add(new JObject { ["image"] = imgData, ["width"] = refW, ["height"] = refH });
+                                    }
+                                }
+                                if (refsArray.Count > 0)
+                                    extra["reference_images"] = refsArray;
                                 response = await Client.GenerateImage(desc, width, height, extra);
                                 break;
                         }
@@ -335,14 +415,17 @@ namespace PixelLab.Editor
                         response = await Client.WaitForJob(jobId, 2f);
                     }
 
+                    // Extract usage info from response (if present)
+                    JToken usageToken    = response["usage"];
+                    _pendingUsageText    = usageToken?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+
                     // Save images
                     string responseJson = response.ToString(Newtonsoft.Json.Formatting.None);
                     _pendingSavedPaths = ImageUtils.SaveImagesFromResponseJson(responseJson, outputDir, "generate");
 
                     // Fetch updated balance
                     JObject balance = await Client.GetBalance();
-                    _pendingUsd     = balance["usd_balance"]?.Value<float>() ?? 0f;
-                    _pendingCredits = balance["balance"]?.Value<float>()     ?? 0f;
+                    (_pendingUsd, _pendingCredits) = PixelLabWindow.ParseBalanceResponse(balance);
                 },
                 onComplete: () =>
                 {
@@ -356,8 +439,9 @@ namespace PixelLab.Editor
                         ResultTextures.Add(tex);
                     }
 
-                    Window.SetCost("");
-                    Window.SetCredits($"${_pendingUsd:F4} USD ({_pendingCredits:F2} credits)");
+                    if (!string.IsNullOrEmpty(_pendingUsageText))
+                        Window.SetCost(_pendingUsageText);
+                    Window.SetCredits($"${_pendingUsd:F4}");
                 },
                 onError: ex =>
                 {

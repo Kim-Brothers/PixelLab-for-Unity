@@ -25,6 +25,17 @@ namespace PixelLab.Editor
 
         private static readonly string[] DirectionLabels = { "1 Direction", "8 Directions" };
 
+        // Advanced foldout fields
+        private bool   _advancedFoldout = false;
+        private int    _nFramesIdx      = 0;   // 0=1(default), 1=4, 2=16, 3=64
+        private int    _objectViewIdx   = 0;   // 0=(default), 1=low top-down, 2=high top-down, 3=side
+        private List<string>    _styleImagePaths    = new List<string>();
+        private List<Texture2D> _styleImagePreviews = new List<Texture2D>();
+
+        private static readonly string[]  NFramesLabels  = { "1 (default)", "4", "16", "64" };
+        private static readonly int[]     NFramesValues  = { 1, 4, 16, 64 };
+        private static readonly string[]  ObjectViewOptions = { "(default)", "low top-down", "high top-down", "side" };
+
         // -----------------------------------------------------------------------
         // Object list fields
         // -----------------------------------------------------------------------
@@ -37,9 +48,37 @@ namespace PixelLab.Editor
 
         private Vector2 _listScrollPos;
 
+        // Pagination
+        private int _pageSize      = 20;
+        private int _pageOffset    = 0;
+        private int _lastPageCount = 0;
+
         // Inline tag editing state
         private string _editingTagsId    = "";
         private string _editingTagsValue = "";
+
+        // Inline action panel state
+        private string _actionRowId   = "";
+        private string _actionRowMode = ""; // "animate" | "vary" | "review"
+
+        // Animate form state
+        private string _animDescription = "";
+        private int    _animDirIdx      = 0;
+        private int    _animFrameCount  = 8;
+        private bool   _animNoBg        = false;
+
+        // Vary form state
+        private string _varyEditDesc = "";
+
+        // Review form state
+        private string _reviewIndicesCsv = "";
+        private string _reviewCommonTag  = "";
+
+        private static readonly string[] DirectionPickerOptions =
+        {
+            "south", "north", "east", "west",
+            "south-east", "south-west", "north-east", "north-west"
+        };
 
         // -----------------------------------------------------------------------
         // Error / status messages
@@ -69,9 +108,7 @@ namespace PixelLab.Editor
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("Object Generation / Management", EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
+            DrawPanelHeader("Object Generation / Management");
 
             if (!RequireClient())
             {
@@ -96,8 +133,7 @@ namespace PixelLab.Editor
 
         private void DrawCreateSection()
         {
-            EditorGUILayout.LabelField("Create Object", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            DrawSectionHeader("Create Object");
 
             // Description
             EditorGUILayout.LabelField("Description");
@@ -129,6 +165,59 @@ namespace PixelLab.Editor
             _seed = EditorGUILayout.IntField(_seed);
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(6);
+
+            // Advanced foldout
+            _advancedFoldout = EditorGUILayout.Foldout(_advancedFoldout, "Advanced Settings", true);
+            if (_advancedFoldout)
+            {
+                EditorGUI.indentLevel++;
+
+                // n_frames — only relevant for 1-Direction
+                if (_directionType == 0)
+                {
+                    _nFramesIdx = EditorGUILayout.Popup("N Frames", _nFramesIdx, NFramesLabels);
+                }
+
+                // view
+                _objectViewIdx = EditorGUILayout.Popup("View", _objectViewIdx, ObjectViewOptions);
+
+                // Style images (up to 4)
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(4);
+                EditorGUILayout.LabelField("Style Images (Max 4)", EditorStyles.boldLabel);
+
+                int removeStyleIdx = -1;
+                for (int i = 0; i < _styleImagePaths.Count; i++)
+                {
+                    int idx = i;
+                    string    path = _styleImagePaths[i];
+                    Texture2D prev = _styleImagePreviews[i];
+                    DrawImagePicker($"Style {i + 1}", ref path, ref prev, () =>
+                    {
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                            removeStyleIdx = idx;
+                    }, 60);
+                    _styleImagePaths[i]    = path;
+                    _styleImagePreviews[i] = prev;
+                }
+                if (removeStyleIdx >= 0)
+                {
+                    _styleImagePaths.RemoveAt(removeStyleIdx);
+                    _styleImagePreviews.RemoveAt(removeStyleIdx);
+                }
+
+                if (_styleImagePaths.Count < 4)
+                {
+                    if (GUILayout.Button("+ Add Style Image", GUILayout.Height(24)))
+                    {
+                        _styleImagePaths.Add("");
+                        _styleImagePreviews.Add(null);
+                    }
+                }
+
+                EditorGUILayout.Space(4);
+            }
+            EditorGUILayout.Space(2);
 
             // Error message
             if (!string.IsNullOrEmpty(_createError))
@@ -166,7 +255,25 @@ namespace PixelLab.Editor
 
         private void DrawListSection()
         {
-            EditorGUILayout.LabelField("Object List", EditorStyles.boldLabel);
+            DrawSectionHeader("Object List");
+
+            // Pagination controls
+            EditorGUILayout.BeginHorizontal();
+            GUI.enabled = !IsLoading && _pageOffset > 0;
+            if (GUILayout.Button("Prev", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _pageOffset = Mathf.Max(0, _pageOffset - _pageSize);
+                RefreshObjectList();
+            }
+            GUI.enabled = !IsLoading && _lastPageCount >= _pageSize;
+            if (GUILayout.Button("Next", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _pageOffset += _pageSize;
+                RefreshObjectList();
+            }
+            GUI.enabled = true;
+            EditorGUILayout.LabelField($"Showing {_pageOffset}–{_pageOffset + _lastPageCount}", EditorStyles.miniLabel);
+            EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(4);
 
             // Refresh button
@@ -265,6 +372,55 @@ namespace PixelLab.Editor
                     {
                         _editingTagsId    = obj.id;
                         _editingTagsValue = obj.tags;
+                        // Close any open action panel for this row
+                        if (_actionRowId == obj.id) { _actionRowId = ""; _actionRowMode = ""; }
+                    }
+                }
+
+                // Animate / Vary / Review action toggle buttons
+                string animLabel   = (_actionRowId == obj.id && _actionRowMode == "animate") ? "Cancel" : "Animate";
+                string varyLabel   = (_actionRowId == obj.id && _actionRowMode == "vary")    ? "Cancel" : "Vary";
+                string reviewLabel = (_actionRowId == obj.id && _actionRowMode == "review")  ? "Cancel" : "Review";
+
+                if (GUILayout.Button(animLabel, EditorStyles.miniButton, GUILayout.Width(56)))
+                {
+                    if (_actionRowId == obj.id && _actionRowMode == "animate")
+                    {
+                        _actionRowId = ""; _actionRowMode = "";
+                    }
+                    else
+                    {
+                        _actionRowId   = obj.id;
+                        _actionRowMode = "animate";
+                        _editingTagsId = "";
+                    }
+                }
+
+                if (GUILayout.Button(varyLabel, EditorStyles.miniButton, GUILayout.Width(40)))
+                {
+                    if (_actionRowId == obj.id && _actionRowMode == "vary")
+                    {
+                        _actionRowId = ""; _actionRowMode = "";
+                    }
+                    else
+                    {
+                        _actionRowId   = obj.id;
+                        _actionRowMode = "vary";
+                        _editingTagsId = "";
+                    }
+                }
+
+                if (GUILayout.Button(reviewLabel, EditorStyles.miniButton, GUILayout.Width(52)))
+                {
+                    if (_actionRowId == obj.id && _actionRowMode == "review")
+                    {
+                        _actionRowId = ""; _actionRowMode = "";
+                    }
+                    else
+                    {
+                        _actionRowId   = obj.id;
+                        _actionRowMode = "review";
+                        _editingTagsId = "";
                     }
                 }
 
@@ -294,6 +450,118 @@ namespace PixelLab.Editor
                     EditorGUILayout.LabelField("Separate multiple tags with commas.", EditorStyles.miniLabel);
                 }
 
+                // Inline action form (animate / vary / review)
+                if (_actionRowId == obj.id)
+                {
+                    EditorGUILayout.Space(2);
+
+                    if (_actionRowMode == "animate")
+                    {
+                        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                        EditorGUILayout.LabelField("Animate Object", EditorStyles.boldLabel);
+
+                        EditorGUILayout.LabelField("Animation Description");
+                        _animDescription = EditorGUILayout.TextField(_animDescription);
+
+                        _animDirIdx = EditorGUILayout.Popup("Direction", _animDirIdx, DirectionPickerOptions);
+
+                        _animFrameCount = EditorGUILayout.IntField("Frame Count (4-16, even)", _animFrameCount);
+                        _animFrameCount = Mathf.Clamp(_animFrameCount, 4, 16);
+                        if (_animFrameCount % 2 != 0) _animFrameCount++;
+
+                        _animNoBg = EditorGUILayout.Toggle("No Background", _animNoBg);
+
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.FlexibleSpace();
+
+                        GUI.enabled = !IsLoading;
+                        if (GUILayout.Button("Run", EditorStyles.miniButton, GUILayout.Width(44)))
+                        {
+                            string idSnap   = obj.id;
+                            string descSnap = _animDescription;
+                            string dirSnap  = DirectionPickerOptions[_animDirIdx];
+                            int    fcSnap   = _animFrameCount;
+                            bool   noBgSnap = _animNoBg;
+                            ResetActionPanel();
+                            RunAnimateObject(idSnap, descSnap, dirSnap, fcSnap, noBgSnap);
+                        }
+                        if (GUILayout.Button("Cancel", EditorStyles.miniButton, GUILayout.Width(52)))
+                        {
+                            ResetActionPanel();
+                        }
+                        GUI.enabled = true;
+
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.EndVertical();
+                    }
+                    else if (_actionRowMode == "vary")
+                    {
+                        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                        EditorGUILayout.LabelField("Vary Object", EditorStyles.boldLabel);
+
+                        EditorGUILayout.LabelField("Edit Description");
+                        _varyEditDesc = EditorGUILayout.TextField(_varyEditDesc);
+
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.FlexibleSpace();
+
+                        GUI.enabled = !IsLoading;
+                        if (GUILayout.Button("Run", EditorStyles.miniButton, GUILayout.Width(44)))
+                        {
+                            string idSnap   = obj.id;
+                            string descSnap = _varyEditDesc;
+                            ResetActionPanel();
+                            RunVaryObject(idSnap, descSnap);
+                        }
+                        if (GUILayout.Button("Cancel", EditorStyles.miniButton, GUILayout.Width(52)))
+                        {
+                            ResetActionPanel();
+                        }
+                        GUI.enabled = true;
+
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.EndVertical();
+                    }
+                    else if (_actionRowMode == "review")
+                    {
+                        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                        EditorGUILayout.LabelField("Review Frames", EditorStyles.boldLabel);
+
+                        EditorGUILayout.LabelField("Frame Indices (comma-separated)");
+                        _reviewIndicesCsv = EditorGUILayout.TextField(_reviewIndicesCsv);
+
+                        EditorGUILayout.LabelField("Common Tag (optional)");
+                        _reviewCommonTag = EditorGUILayout.TextField(_reviewCommonTag);
+
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.FlexibleSpace();
+
+                        GUI.enabled = !IsLoading;
+                        if (GUILayout.Button("Select Frames", EditorStyles.miniButton, GUILayout.Width(90)))
+                        {
+                            string idSnap  = obj.id;
+                            string csvSnap = _reviewIndicesCsv;
+                            string tagSnap = _reviewCommonTag;
+                            ResetActionPanel();
+                            RunSelectFrames(idSnap, csvSnap, tagSnap);
+                        }
+                        if (GUILayout.Button("Dismiss Review", EditorStyles.miniButton, GUILayout.Width(96)))
+                        {
+                            string idSnap = obj.id;
+                            ResetActionPanel();
+                            RunDismissReview(idSnap);
+                        }
+                        if (GUILayout.Button("Cancel", EditorStyles.miniButton, GUILayout.Width(52)))
+                        {
+                            ResetActionPanel();
+                        }
+                        GUI.enabled = true;
+
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.EndVertical();
+                    }
+                }
+
                 EditorGUILayout.EndVertical();
                 EditorGUILayout.Space(2);
             }
@@ -313,14 +581,19 @@ namespace PixelLab.Editor
                 return;
             }
 
-            string desc      = _description;
+            string desc       = _description;
             int    directions = _directionType == 0 ? 1 : 8;
-            int    width     = Mathf.Max(1, _width);
-            int    height    = Mathf.Max(1, _height);
-            bool   noBg      = _noBackground;
-            int    seed      = _seed;
-            bool   mapObj    = _isMapObject;
-            string outputDir = Window.OutputDir;
+            int    width      = Mathf.Max(1, _width);
+            int    height     = Mathf.Max(1, _height);
+            bool   noBg       = _noBackground;
+            int    seed       = _seed;
+            bool   mapObj     = _isMapObject;
+            string outputDir  = Window.OutputDir;
+
+            // Advanced field snapshots
+            int    nFrames      = (_directionType == 0) ? NFramesValues[_nFramesIdx] : 1;
+            int    viewIdx      = _objectViewIdx;
+            var    stylePathsSnap = new List<string>(_styleImagePaths);
 
             LoadingMessage = "Generating object...";
             ClearResults();
@@ -330,8 +603,35 @@ namespace PixelLab.Editor
                 {
                     var extraParams = new JObject();
                     if (directions != 1) extraParams["directions"] = directions;
-                    if (noBg)           extraParams["no_background"] = true;
-                    if (seed != 0)      extraParams["seed"] = seed;
+                    if (noBg)            extraParams["no_background"] = true;
+                    if (seed != 0)       extraParams["seed"] = seed;
+
+                    // Advanced: n_frames (only for 1-direction, only when not default)
+                    if (directions == 1 && nFrames != 1)
+                        extraParams["n_frames"] = nFrames;
+
+                    // Advanced: view (only when non-default)
+                    if (viewIdx > 0)
+                        extraParams["view"] = ObjectViewOptions[viewIdx];
+
+                    // Advanced: style_images
+                    var styleArray = new JArray();
+                    foreach (string sp in stylePathsSnap)
+                    {
+                        if (!string.IsNullOrEmpty(sp))
+                        {
+                            JObject imgData = JObject.Parse(ImageUtils.ImageToBase64Json(sp));
+                            ImageUtils.GetImageSize(sp, out int sw, out int sh);
+                            styleArray.Add(new JObject
+                            {
+                                ["image"] = imgData,
+                                ["size"]  = new JObject { ["width"] = sw, ["height"] = sh }
+                            });
+                        }
+                    }
+                    if (styleArray.Count > 0)
+                        extraParams["style_images"] = styleArray;
+
                     JObject extraOrNull = extraParams.Count > 0 ? extraParams : null;
 
                     JObject response = mapObj
@@ -377,13 +677,14 @@ namespace PixelLab.Editor
             RunAsync(
                 async () =>
                 {
-                    JObject result = await Client.ListObjects(20, 0);
+                    JObject result = await Client.ListObjects(_pageSize, _pageOffset);
                     _pendingObjects = ParseObjectList(result);
                 },
                 onComplete: () =>
                 {
-                    _objects   = _pendingObjects;
-                    _listError = "";
+                    _objects       = _pendingObjects;
+                    _lastPageCount = _pendingObjects.Count;
+                    _listError     = "";
                 },
                 onError: ex =>
                 {
@@ -407,14 +708,15 @@ namespace PixelLab.Editor
                     await Client.DeleteObject(idSnapshot);
 
                     // Refresh list on background thread
-                    JObject result = await Client.ListObjects(20, 0);
+                    JObject result = await Client.ListObjects(_pageSize, _pageOffset);
                     _pendingObjects = ParseObjectList(result);
                 },
                 onComplete: () =>
                 {
-                    _objects      = _pendingObjects;
-                    _actionStatus = "Object deleted successfully.";
-                    _listError    = "";
+                    _objects       = _pendingObjects;
+                    _lastPageCount = _pendingObjects.Count;
+                    _actionStatus  = "Object deleted successfully.";
+                    _listError     = "";
                 },
                 onError: ex =>
                 {
@@ -447,12 +749,13 @@ namespace PixelLab.Editor
                     await Client.UpdateObjectTags(idSnapshot, tags);
 
                     // Refresh list to reflect updated tags
-                    JObject result = await Client.ListObjects(20, 0);
+                    JObject result = await Client.ListObjects(_pageSize, _pageOffset);
                     _pendingObjects = ParseObjectList(result);
                 },
                 onComplete: () =>
                 {
                     _objects       = _pendingObjects;
+                    _lastPageCount = _pendingObjects.Count;
                     _editingTagsId = "";
                     _actionStatus  = "Tags updated successfully.";
                     _listError     = "";
@@ -462,6 +765,178 @@ namespace PixelLab.Editor
                     _listError = $"Tag update failed: {ex.Message}";
                 }
             );
+        }
+
+        // -----------------------------------------------------------------------
+        // Async: Animate object
+        // -----------------------------------------------------------------------
+
+        private void RunAnimateObject(string objectId, string animDesc, string direction, int frameCount, bool noBg)
+        {
+            LoadingMessage = "Animating object...";
+            string outputDir = Window.OutputDir;
+
+            RunAsync(
+                async () =>
+                {
+                    var extras = new JObject();
+                    extras["frame_count"]   = frameCount;
+                    if (noBg) extras["no_background"] = true;
+
+                    JObject response = await Client.AnimateObject(objectId, direction, animDesc, extras);
+
+                    string jobId = response["background_job_id"]?.ToString();
+                    if (!string.IsNullOrEmpty(jobId))
+                    {
+                        LoadingMessage = "Waiting for background job...";
+                        response = await Client.WaitForJob(jobId, 2f);
+                    }
+
+                    string responseJson = response.ToString(Newtonsoft.Json.Formatting.None);
+                    _pendingSavedPaths  = ImageUtils.SaveImagesFromResponseJson(responseJson, outputDir, "obj-anim");
+                },
+                onComplete: () =>
+                {
+                    SavedPaths.AddRange(_pendingSavedPaths);
+                    foreach (string p in _pendingSavedPaths)
+                        ResultTextures.Add(LoadTexture(p));
+                    _pendingSavedPaths.Clear();
+                    _actionStatus = "Animation complete.";
+                },
+                onError: ex =>
+                {
+                    _actionStatus = $"Animate failed: {ex.Message}";
+                }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Async: Vary object
+        // -----------------------------------------------------------------------
+
+        private void RunVaryObject(string objectId, string editDesc)
+        {
+            LoadingMessage = "Varying object...";
+            string outputDir = Window.OutputDir;
+
+            RunAsync(
+                async () =>
+                {
+                    JObject response = await Client.VaryObject(objectId, editDesc);
+
+                    string jobId = response["background_job_id"]?.ToString();
+                    if (!string.IsNullOrEmpty(jobId))
+                    {
+                        LoadingMessage = "Waiting for background job...";
+                        response = await Client.WaitForJob(jobId, 2f);
+                    }
+
+                    string responseJson = response.ToString(Newtonsoft.Json.Formatting.None);
+                    _pendingSavedPaths  = ImageUtils.SaveImagesFromResponseJson(responseJson, outputDir, "obj-vary");
+                },
+                onComplete: () =>
+                {
+                    SavedPaths.AddRange(_pendingSavedPaths);
+                    foreach (string p in _pendingSavedPaths)
+                        ResultTextures.Add(LoadTexture(p));
+                    _pendingSavedPaths.Clear();
+                    _actionStatus = "Vary complete.";
+                },
+                onError: ex =>
+                {
+                    _actionStatus = $"Vary failed: {ex.Message}";
+                }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Async: Select object frames (review state)
+        // -----------------------------------------------------------------------
+
+        private void RunSelectFrames(string objectId, string indicesCsv, string commonTag)
+        {
+            LoadingMessage = "Selecting frames...";
+
+            var indexList = new List<int>();
+            if (!string.IsNullOrWhiteSpace(indicesCsv))
+            {
+                foreach (string s in indicesCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (int.TryParse(s.Trim(), out int idx))
+                        indexList.Add(idx);
+                }
+            }
+            int[]  indices   = indexList.ToArray();
+            string tagSnap   = string.IsNullOrWhiteSpace(commonTag) ? null : commonTag.Trim();
+            string idSnapshot = objectId;
+
+            RunAsync(
+                async () =>
+                {
+                    await Client.SelectObjectFrames(idSnapshot, indices, tagSnap);
+
+                    JObject result = await Client.ListObjects(_pageSize, _pageOffset);
+                    _pendingObjects = ParseObjectList(result);
+                },
+                onComplete: () =>
+                {
+                    _objects       = _pendingObjects;
+                    _lastPageCount = _pendingObjects.Count;
+                    _actionStatus  = "Frames selected successfully.";
+                    _listError     = "";
+                },
+                onError: ex =>
+                {
+                    _actionStatus = $"Select frames failed: {ex.Message}";
+                }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Async: Dismiss object review
+        // -----------------------------------------------------------------------
+
+        private void RunDismissReview(string objectId)
+        {
+            LoadingMessage = "Dismissing review...";
+            string idSnapshot = objectId;
+
+            RunAsync(
+                async () =>
+                {
+                    await Client.DismissObjectReview(idSnapshot);
+
+                    JObject result = await Client.ListObjects(_pageSize, _pageOffset);
+                    _pendingObjects = ParseObjectList(result);
+                },
+                onComplete: () =>
+                {
+                    _objects      = _pendingObjects;
+                    _actionStatus = "Review dismissed.";
+                    _listError    = "";
+                },
+                onError: ex =>
+                {
+                    _actionStatus = $"Dismiss review failed: {ex.Message}";
+                }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Helper: reset inline action panel and clear form fields
+        // -----------------------------------------------------------------------
+
+        private void ResetActionPanel()
+        {
+            _actionRowId      = "";
+            _actionRowMode    = "";
+            _animDescription  = "";
+            _animDirIdx       = 0;
+            _animFrameCount   = 8;
+            _animNoBg         = false;
+            _varyEditDesc     = "";
+            _reviewIndicesCsv = "";
+            _reviewCommonTag  = "";
         }
 
         // -----------------------------------------------------------------------
@@ -494,12 +969,6 @@ namespace PixelLab.Editor
             return list;
         }
 
-        private static void DrawDivider()
-        {
-            Rect r = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none,
-                GUILayout.Height(1), GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(r, new Color(0.35f, 0.35f, 0.35f));
-        }
     }
 }
 #endif

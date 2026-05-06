@@ -569,78 +569,61 @@ namespace PixelLab.Editor
         };
 
         /// <summary>
-        /// Approximate credit costs per operation.
+        /// Approximate USD cost per operation (estimated at ~$0.001 per credit).
         /// Keys match the operation identifiers used in the Python SDK.
         /// </summary>
         public static readonly Dictionary<string, string> OPERATION_COSTS =
             new Dictionary<string, string>
             {
                 // Generation
-                { "generate_image",              "1–5 credits" },
-                { "generate_with_style",         "5 credits"   },
-                { "generate_ui",                 "3 credits"   },
-                { "generate_image_pixflux",      "1–5 credits" },
-                { "generate_image_pixen",        "varies"      },
-                { "generate_image_bitforge",     "varies"      },
+                { "generate_image",              "~$0.001–0.005"                       },
+                { "generate_with_style",         "~$0.005"                             },
+                { "generate_ui",                 "~$0.003"                             },
+                { "generate_image_pixflux",      "~$0.001–0.005"                       },
+                { "generate_image_pixen",        "~$0.001–0.005 (size-dependent)"      },
+                { "generate_image_bitforge",     "~$0.001–0.003 (size-dependent)"      },
 
                 // Characters
-                { "create_character_4dir",       "8 credits"   },
-                { "create_character_8dir",       "16 credits"  },
-                { "character_animation",         "10 credits"  },
-                { "animate_character",           "10 credits"  },
-                { "update_character_tags",       "free"        },
-                { "delete_character",            "free"        },
-                { "export_character_zip",        "free"        },
+                { "create_character_4dir",       "~$0.008"                             },
+                { "create_character_8dir",       "~$0.016"                             },
+                { "character_animation",         "~$0.010"                             },
+                { "animate_character",           "~$0.010"                             },
 
                 // Animation
-                { "animate_with_text",           "varies"      },
-                { "animate_with_text_v2",        "5 credits"   },
-                { "animate_with_text_v3",        "5 credits"   },
-                { "animate_with_skeleton",       "5 credits"   },
-                { "interpolation",               "3 credits"   },
-                { "transfer_outfit_v2",          "varies"      },
-                { "edit_animation_v2",           "varies"      },
-                { "estimate_skeleton",           "varies"      },
-                { "generate_8_rotations_v3",     "8 credits"   },
+                { "animate_with_text",           "~$0.005–0.020 (n_frames × per-frame)" },
+                { "animate_with_text_v2",        "~$0.005"                             },
+                { "animate_with_text_v3",        "~$0.005"                             },
+                { "animate_with_skeleton",       "~$0.005"                             },
+                { "interpolation",               "~$0.003"                             },
+                { "transfer_outfit_v2",          "~$0.005 × n_frames"                  },
+                { "edit_animation_v2",           "~$0.005 × n_frames"                  },
+                { "estimate_skeleton",           "~$0.001 (small inference call)"      },
+                { "generate_8_rotations_v3",     "~$0.008"                             },
 
                 // Editing
-                { "edit_images_v2",              "3 credits"   },
-                { "edit_image",                  "varies"      },
-                { "inpaint_v3",                  "3 credits"   },
-                { "inpaint",                     "varies"      },
-                { "image_to_pixelart",           "varies"      },
-                { "resize",                      "varies"      },
-                { "remove_background",           "varies"      },
+                { "edit_images_v2",              "~$0.003"                             },
+                { "edit_image",                  "~$0.001–0.003 (size-dependent)"      },
+                { "inpaint_v3",                  "~$0.003"                             },
+                { "inpaint",                     "~$0.002–0.004 (mask size-dependent)" },
+                { "image_to_pixelart",           "~$0.001 (input/output size-dependent)" },
+                { "resize",                      "~$0.001 (target size-dependent)"     },
+                { "remove_background",           "~$0.001 (size + simple/complex)"     },
 
                 // Tilesets / Maps
-                { "create_tileset",              "10 credits"  },
-                { "create_tileset_topdown",      "10 credits"  },
-                { "create_tileset_sidescroller", "5 credits"   },
-                { "create_isometric_tile",       "3 credits"   },
-                { "create_tiles_pro",            "5 credits"   },
-                { "list_tilesets",               "free"        },
-                { "get_tileset",                 "free"        },
-                { "list_isometric_tiles",        "free"        },
-                { "get_isometric_tile",          "free"        },
-                { "get_tiles_pro",               "free"        },
-
-                // Documentation
-                { "get_llms_txt",                "free"        },
+                { "create_tileset",              "~$0.010"                             },
+                { "create_tileset_topdown",      "~$0.010"                             },
+                { "create_tileset_sidescroller", "~$0.005"                             },
+                { "create_isometric_tile",       "~$0.003"                             },
+                { "create_tiles_pro",            "~$0.005"                             },
 
                 // Objects & Rotations
-                { "create_map_object",           "3 credits"   },
-                { "create_object",               "varies"      },
-                { "animate_object",              "varies"      },
-                { "vary_object",                 "varies"      },
-                { "select_object_frames",        "free"        },
-                { "dismiss_object_review",       "free"        },
-                { "list_objects",                "free"        },
-                { "get_object",                  "free"        },
-                { "delete_object",               "free"        },
-                { "update_object_tags",          "free"        },
-                { "rotate",                      "2 credits"   },
-                { "generate_8_rotations",        "8 credits"   },
-                { "generate_8_rotations_v2",     "8 credits"   },
+                { "create_map_object",           "~$0.003"                             },
+                { "create_object",               "~$0.003 × directions × n_frames"     },
+                { "animate_object",              "~$0.005 × frame_count"               },
+                { "vary_object",                 "~$0.003 per variation"               },
+                { "rotate",                      "~$0.002"                             },
+                { "generate_8_rotations",        "~$0.008"                             },
+                { "generate_8_rotations_v2",     "~$0.008"                             },
             };
     }
 }

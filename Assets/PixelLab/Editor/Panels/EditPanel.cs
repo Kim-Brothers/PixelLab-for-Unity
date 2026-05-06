@@ -81,13 +81,15 @@ namespace PixelLab.Editor
 
         public override void Draw()
         {
-            if (!RequireClient()) return;
-
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("Image Edit", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            DrawPanelHeader("Image Edit");
+
+            if (!RequireClient())
+            {
+                EditorGUILayout.EndScrollView();
+                return;
+            }
 
             int newTab = GUILayout.Toolbar(_selectedTab, TabNames);
             if (newTab != _selectedTab)
@@ -101,8 +103,11 @@ namespace PixelLab.Editor
 
             switch (_selectedTab)
             {
-                case 0: DrawEditImages(); break;
-                case 1: DrawInpaint();    break;
+                case 0: DrawEditImages();     break;
+                case 1: DrawInpaint();        break;
+                case 2: DrawPixelart();       break;
+                case 3: DrawResize();         break;
+                case 4: DrawRemoveBackground(); break;
             }
 
             if (!string.IsNullOrEmpty(_errorMessage))
@@ -275,6 +280,272 @@ namespace PixelLab.Editor
 
                     paths = ImageUtils.SaveImagesFromResponseJson(
                         result.ToString(), outputDir, "inpaint");
+                },
+                () =>
+                {
+                    if (paths != null)
+                    {
+                        SavedPaths.AddRange(paths);
+                        foreach (string p in paths)
+                        {
+                            Texture2D tex = LoadTexture(p);
+                            if (tex != null) ResultTextures.Add(tex);
+                        }
+                    }
+                },
+                ex => { _errorMessage = $"Error: {ex.Message}"; }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Tab 2 – ImageToPixelart
+        // -----------------------------------------------------------------------
+
+        private void DrawPixelart()
+        {
+            DrawImagePicker("Source Image", ref _pixelartSourcePath, ref _pixelartSourcePreview);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Input Size", GUILayout.Width(70));
+            EditorGUILayout.LabelField("W", GUILayout.Width(14));
+            _pixelartInputWidth  = EditorGUILayout.IntField(_pixelartInputWidth,  GUILayout.Width(60));
+            EditorGUILayout.LabelField("H", GUILayout.Width(14));
+            _pixelartInputHeight = EditorGUILayout.IntField(_pixelartInputHeight, GUILayout.Width(60));
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Output Size", GUILayout.Width(70));
+            EditorGUILayout.LabelField("W", GUILayout.Width(14));
+            _pixelartOutputWidth  = EditorGUILayout.IntField(_pixelartOutputWidth,  GUILayout.Width(60));
+            EditorGUILayout.LabelField("H", GUILayout.Width(14));
+            _pixelartOutputHeight = EditorGUILayout.IntField(_pixelartOutputHeight, GUILayout.Width(60));
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(8);
+
+            GUI.enabled = !IsLoading;
+            if (GUILayout.Button(IsLoading ? LoadingMessage : "Convert to Pixelart", GUILayout.Height(30)))
+                RunPixelart();
+            GUI.enabled = true;
+        }
+
+        private void RunPixelart()
+        {
+            if (string.IsNullOrEmpty(_pixelartSourcePath))
+            {
+                _errorMessage = "Please select a source image.";
+                return;
+            }
+
+            _errorMessage = "";
+            ClearResults();
+
+            string sourcePath = _pixelartSourcePath;
+            int    inputW     = _pixelartInputWidth;
+            int    inputH     = _pixelartInputHeight;
+            int    outputW    = _pixelartOutputWidth;
+            int    outputH    = _pixelartOutputHeight;
+            string outputDir  = Window.OutputDir;
+
+            // Auto-detect input dimensions if zero
+            if (inputW <= 0 || inputH <= 0)
+                ImageUtils.GetImageSize(sourcePath, out inputW, out inputH);
+
+            int capturedInputW  = inputW;
+            int capturedInputH  = inputH;
+
+            List<string> paths = null;
+
+            RunAsync(
+                async () =>
+                {
+                    JObject imageData = JObject.Parse(ImageUtils.ImageToBase64Json(sourcePath));
+
+                    JObject result = await Client.ImageToPixelart(
+                        imageData, capturedInputW, capturedInputH, outputW, outputH);
+
+                    string jobId = result["background_job_id"]?.ToString();
+                    if (!string.IsNullOrEmpty(jobId))
+                        result = await Client.WaitForJob(jobId);
+
+                    paths = ImageUtils.SaveImagesFromResponseJson(
+                        result.ToString(), outputDir, "pixelart");
+                },
+                () =>
+                {
+                    if (paths != null)
+                    {
+                        SavedPaths.AddRange(paths);
+                        foreach (string p in paths)
+                        {
+                            Texture2D tex = LoadTexture(p);
+                            if (tex != null) ResultTextures.Add(tex);
+                        }
+                    }
+                },
+                ex => { _errorMessage = $"Error: {ex.Message}"; }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Tab 3 – Resize
+        // -----------------------------------------------------------------------
+
+        private void DrawResize()
+        {
+            DrawImagePicker("Reference Image", ref _resizeRefImagePath, ref _resizeRefImagePreview);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Description");
+            _resizeDescription = EditorGUILayout.TextField(_resizeDescription);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Ref Size", GUILayout.Width(70));
+            EditorGUILayout.LabelField("W", GUILayout.Width(14));
+            _resizeRefWidth  = EditorGUILayout.IntField(_resizeRefWidth,  GUILayout.Width(60));
+            EditorGUILayout.LabelField("H", GUILayout.Width(14));
+            _resizeRefHeight = EditorGUILayout.IntField(_resizeRefHeight, GUILayout.Width(60));
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Target Size", GUILayout.Width(70));
+            EditorGUILayout.LabelField("W", GUILayout.Width(14));
+            _resizeTargetWidth  = EditorGUILayout.IntField(_resizeTargetWidth,  GUILayout.Width(60));
+            EditorGUILayout.LabelField("H", GUILayout.Width(14));
+            _resizeTargetHeight = EditorGUILayout.IntField(_resizeTargetHeight, GUILayout.Width(60));
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(8);
+
+            GUI.enabled = !IsLoading;
+            if (GUILayout.Button(IsLoading ? LoadingMessage : "Resize Image", GUILayout.Height(30)))
+                RunResize();
+            GUI.enabled = true;
+        }
+
+        private void RunResize()
+        {
+            if (string.IsNullOrEmpty(_resizeRefImagePath))
+            {
+                _errorMessage = "Please select a reference image.";
+                return;
+            }
+
+            _errorMessage = "";
+            ClearResults();
+
+            string refImagePath = _resizeRefImagePath;
+            string desc         = _resizeDescription;
+            int    refW         = _resizeRefWidth;
+            int    refH         = _resizeRefHeight;
+            int    targetW      = _resizeTargetWidth;
+            int    targetH      = _resizeTargetHeight;
+            string outputDir    = Window.OutputDir;
+
+            List<string> paths = null;
+
+            RunAsync(
+                async () =>
+                {
+                    JObject refImageData = JObject.Parse(ImageUtils.ImageToBase64Json(refImagePath));
+
+                    JObject result = await Client.Resize(
+                        desc, refImageData, refW, refH, targetW, targetH);
+
+                    string jobId = result["background_job_id"]?.ToString();
+                    if (!string.IsNullOrEmpty(jobId))
+                        result = await Client.WaitForJob(jobId);
+
+                    paths = ImageUtils.SaveImagesFromResponseJson(
+                        result.ToString(), outputDir, "resize");
+                },
+                () =>
+                {
+                    if (paths != null)
+                    {
+                        SavedPaths.AddRange(paths);
+                        foreach (string p in paths)
+                        {
+                            Texture2D tex = LoadTexture(p);
+                            if (tex != null) ResultTextures.Add(tex);
+                        }
+                    }
+                },
+                ex => { _errorMessage = $"Error: {ex.Message}"; }
+            );
+        }
+
+        // -----------------------------------------------------------------------
+        // Tab 4 – Remove Background
+        // -----------------------------------------------------------------------
+
+        private static readonly string[] RemoveBgTaskOptions = { "simple", "complex" };
+        private int _removeBgTaskIndex = 0;
+
+        private void DrawRemoveBackground()
+        {
+            DrawImagePicker("Source Image", ref _removeBgSourcePath, ref _removeBgSourcePreview);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Size", GUILayout.Width(40));
+            EditorGUILayout.LabelField("W", GUILayout.Width(14));
+            _removeBgWidth  = EditorGUILayout.IntField(_removeBgWidth,  GUILayout.Width(60));
+            EditorGUILayout.LabelField("H", GUILayout.Width(14));
+            _removeBgHeight = EditorGUILayout.IntField(_removeBgHeight, GUILayout.Width(60));
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Task");
+            _removeBgTaskIndex = EditorGUILayout.Popup(_removeBgTaskIndex, RemoveBgTaskOptions);
+
+            EditorGUILayout.Space(8);
+
+            GUI.enabled = !IsLoading;
+            if (GUILayout.Button(IsLoading ? LoadingMessage : "Remove Background", GUILayout.Height(30)))
+                RunRemoveBackground();
+            GUI.enabled = true;
+        }
+
+        private void RunRemoveBackground()
+        {
+            if (string.IsNullOrEmpty(_removeBgSourcePath))
+            {
+                _errorMessage = "Please select a source image.";
+                return;
+            }
+
+            _errorMessage = "";
+            ClearResults();
+
+            string sourcePath = _removeBgSourcePath;
+            int    w          = _removeBgWidth;
+            int    h          = _removeBgHeight;
+            string task       = RemoveBgTaskOptions[_removeBgTaskIndex];
+            string outputDir  = Window.OutputDir;
+
+            List<string> paths = null;
+
+            RunAsync(
+                async () =>
+                {
+                    JObject imageData = JObject.Parse(ImageUtils.ImageToBase64Json(sourcePath));
+
+                    var extras = new JObject
+                    {
+                        ["background_removal_task"] = task
+                    };
+
+                    JObject result = await Client.RemoveBackground(imageData, w, h, extras);
+
+                    string jobId = result["background_job_id"]?.ToString();
+                    if (!string.IsNullOrEmpty(jobId))
+                        result = await Client.WaitForJob(jobId);
+
+                    paths = ImageUtils.SaveImagesFromResponseJson(
+                        result.ToString(), outputDir, "removebg");
                 },
                 () =>
                 {

@@ -25,6 +25,11 @@ namespace PixelLab.Editor
         // Tab 1 – Character Animation (CreateCharacterAnimation)
         // -----------------------------------------------------------------------
 
+        private static readonly string[] CharAnimModeLabels = { "Template", "v3", "Pro" };
+        private int    _charAnimModeIdx   = 0;
+        private string _charAnimAction    = "";
+        private int    _charAnimFrameCount = 8;
+
         private string _characterId      = "";
         private int    _templateIndex    = 0;
 
@@ -86,8 +91,10 @@ namespace PixelLab.Editor
         // Tab 7 – EstimateSkeleton
         // -----------------------------------------------------------------------
 
-        private string    _estSkelImagePath    = "";
-        private Texture2D _estSkelImagePreview = null;
+        private string    _estSkelImagePath       = "";
+        private Texture2D _estSkelImagePreview    = null;
+        private string    _skeletonKeypointsJson  = "";
+        private Vector2   _skeletonScroll;
 
         // -----------------------------------------------------------------------
         // Tab 8 – Generate8RotationsV3
@@ -109,11 +116,11 @@ namespace PixelLab.Editor
             "Text Animation",
             "Character Animation",
             "Interpolation",
-            "AnimV3",
+            "Anim V3",
             "Skeleton Anim",
             "Edit Anim",
             "Outfit Transfer",
-            "Est. Skeleton",
+            "Estimate Skeleton",
             "8 Rotations V3"
         };
 
@@ -129,15 +136,20 @@ namespace PixelLab.Editor
 
         public override void Draw()
         {
-            if (!RequireClient()) return;
-
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("Animation", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            DrawPanelHeader("Animation");
 
-            int newTab = GUILayout.Toolbar(_selectedTab, TabNames);
+            if (!RequireClient())
+            {
+                EditorGUILayout.EndScrollView();
+                return;
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Mode", GUILayout.Width(40));
+            int newTab = EditorGUILayout.Popup(_selectedTab, TabNames);
+            EditorGUILayout.EndHorizontal();
             if (newTab != _selectedTab)
             {
                 _selectedTab  = newTab;
@@ -160,6 +172,7 @@ namespace PixelLab.Editor
                 case 8: Draw8RotationsV3();       break;
             }
 
+            // 에러 메시지는 결과 이미지보다 먼저 표시
             if (!string.IsNullOrEmpty(_errorMessage))
             {
                 EditorGUILayout.Space(4);
@@ -277,12 +290,31 @@ namespace PixelLab.Editor
 
         private void DrawCharacterAnimation()
         {
+            EditorGUILayout.LabelField("Mode");
+            _charAnimModeIdx = GUILayout.Toolbar(_charAnimModeIdx, CharAnimModeLabels);
+
+            EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Character ID");
             _characterId = EditorGUILayout.TextField(_characterId);
 
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Animation Template");
-            _templateIndex = EditorGUILayout.Popup(_templateIndex, PixelLabConstants.ANIMATION_TEMPLATES);
+            if (_charAnimModeIdx == 0)
+            {
+                EditorGUILayout.LabelField("Animation Template");
+                _templateIndex = EditorGUILayout.Popup(_templateIndex, PixelLabConstants.ANIMATION_TEMPLATES);
+            }
+            else
+            {
+                EditorGUILayout.LabelField("Action Description");
+                _charAnimAction = EditorGUILayout.TextField(_charAnimAction);
+
+                EditorGUILayout.Space(4);
+                _charAnimFrameCount = EditorGUILayout.IntField("Frame Count", _charAnimFrameCount);
+                _charAnimFrameCount = Mathf.Clamp(_charAnimFrameCount, 4, 16);
+                // clamp to even
+                if (_charAnimFrameCount % 2 != 0)
+                    _charAnimFrameCount = _charAnimFrameCount - 1;
+            }
 
             EditorGUILayout.Space(8);
 
@@ -303,8 +335,11 @@ namespace PixelLab.Editor
             _errorMessage = "";
             ClearResults();
 
-            string charId    = _characterId;
+            string charId     = _characterId;
+            int    modeIdx    = _charAnimModeIdx;
             string templateId = PixelLabConstants.ANIMATION_TEMPLATES[_templateIndex];
+            string action     = _charAnimAction;
+            int    frameCount = _charAnimFrameCount;
             string outputDir  = Window.OutputDir;
 
             List<string> paths = null;
@@ -312,7 +347,22 @@ namespace PixelLab.Editor
             RunAsync(
                 async () =>
                 {
-                    JObject result = await Client.CreateCharacterAnimation(charId, templateId);
+                    JObject result;
+                    if (modeIdx == 0)
+                    {
+                        result = await Client.CreateCharacterAnimation(charId, templateId);
+                    }
+                    else
+                    {
+                        string modeName = modeIdx == 1 ? "v3" : "pro";
+                        var extras = new JObject
+                        {
+                            ["mode"]               = modeName,
+                            ["action_description"] = action,
+                            ["frame_count"]        = frameCount
+                        };
+                        result = await Client.CreateCharacterAnimation(charId, extras);
+                    }
 
                     string jobId = result["background_job_id"]?.ToString();
                     if (!string.IsNullOrEmpty(jobId))
@@ -442,7 +492,8 @@ namespace PixelLab.Editor
         {
             DrawImagePicker("First Frame", ref _v3FirstFramePath, ref _v3FirstFramePreview);
             EditorGUILayout.Space(4);
-            DrawImagePicker("Last Frame (Optional)", ref _v3LastFramePath, ref _v3LastFramePreview);
+            if (DrawOptionalFoldout("Last Frame (optional)"))
+                DrawImagePicker("Last Frame", ref _v3LastFramePath, ref _v3LastFramePreview);
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Action Description");
             _v3Action = EditorGUILayout.TextField(_v3Action);
@@ -539,15 +590,18 @@ namespace PixelLab.Editor
         private void DrawEditAnim()
         {
             EditorGUILayout.LabelField("Animation Frames (add images below)", EditorStyles.boldLabel);
+            int removeEditFrameIdx = -1;
             for (int i = 0; i < _editAnimFramePaths.Count; i++)
             {
-                EditorGUILayout.BeginHorizontal();
+                int idx = i;
                 string p = _editAnimFramePaths[i]; Texture2D prev = _editAnimFramePreviews[i];
-                DrawImagePicker($"Frame {i + 1}", ref p, ref prev, 50);
+                DrawImagePicker($"Frame {i + 1}", ref p, ref prev, () =>
+                {
+                    if (GUILayout.Button("X", GUILayout.Width(24))) removeEditFrameIdx = idx;
+                }, 50);
                 _editAnimFramePaths[i] = p; _editAnimFramePreviews[i] = prev;
-                if (GUILayout.Button("X", GUILayout.Width(22), GUILayout.Height(22))) { _editAnimFramePaths.RemoveAt(i); _editAnimFramePreviews.RemoveAt(i); break; }
-                EditorGUILayout.EndHorizontal();
             }
+            if (removeEditFrameIdx >= 0) { _editAnimFramePaths.RemoveAt(removeEditFrameIdx); _editAnimFramePreviews.RemoveAt(removeEditFrameIdx); }
             if (GUILayout.Button("+ Add Frame", GUILayout.Height(22))) { _editAnimFramePaths.Add(""); _editAnimFramePreviews.Add(null); }
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Edit Description");
@@ -596,15 +650,18 @@ namespace PixelLab.Editor
             DrawImagePicker("Reference (Outfit Source)", ref _outfitRefImagePath, ref _outfitRefImagePreview);
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Target Frames", EditorStyles.boldLabel);
+            int removeOutfitFrameIdx = -1;
             for (int i = 0; i < _outfitFramePaths.Count; i++)
             {
-                EditorGUILayout.BeginHorizontal();
+                int idx = i;
                 string p = _outfitFramePaths[i]; Texture2D prev = _outfitFramePreviews[i];
-                DrawImagePicker($"Frame {i + 1}", ref p, ref prev, 50);
+                DrawImagePicker($"Frame {i + 1}", ref p, ref prev, () =>
+                {
+                    if (GUILayout.Button("X", GUILayout.Width(24))) removeOutfitFrameIdx = idx;
+                }, 50);
                 _outfitFramePaths[i] = p; _outfitFramePreviews[i] = prev;
-                if (GUILayout.Button("X", GUILayout.Width(22), GUILayout.Height(22))) { _outfitFramePaths.RemoveAt(i); _outfitFramePreviews.RemoveAt(i); break; }
-                EditorGUILayout.EndHorizontal();
             }
+            if (removeOutfitFrameIdx >= 0) { _outfitFramePaths.RemoveAt(removeOutfitFrameIdx); _outfitFramePreviews.RemoveAt(removeOutfitFrameIdx); }
             if (GUILayout.Button("+ Add Target Frame", GUILayout.Height(22))) { _outfitFramePaths.Add(""); _outfitFramePreviews.Add(null); }
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Size", GUILayout.Width(40));
@@ -657,6 +714,15 @@ namespace PixelLab.Editor
             if (GUILayout.Button(IsLoading ? LoadingMessage : "Estimate Skeleton", GUILayout.Height(30)))
                 RunEstimateSkeleton();
             GUI.enabled = true;
+
+            if (!string.IsNullOrEmpty(_skeletonKeypointsJson))
+            {
+                EditorGUILayout.Space(6);
+                EditorGUILayout.LabelField("Keypoints JSON", EditorStyles.boldLabel);
+                _skeletonScroll = EditorGUILayout.BeginScrollView(_skeletonScroll, GUILayout.MaxHeight(200));
+                EditorGUILayout.TextArea(_skeletonKeypointsJson, GUILayout.ExpandHeight(true));
+                EditorGUILayout.EndScrollView();
+            }
         }
 
         private void RunEstimateSkeleton()
@@ -666,6 +732,7 @@ namespace PixelLab.Editor
             string imgPath = _estSkelImagePath;
             string outputDir = Window.OutputDir;
             List<string> paths = null;
+            string keypointsJson = null;
             RunAsync(async () =>
             {
                 JObject image = JObject.Parse(ImageUtils.ImageToBase64Json(imgPath));
@@ -673,8 +740,19 @@ namespace PixelLab.Editor
                 string jobId = result["background_job_id"]?.ToString();
                 if (!string.IsNullOrEmpty(jobId)) result = await Client.WaitForJob(jobId);
                 paths = ImageUtils.SaveImagesFromResponseJson(result.ToString(), outputDir, "skeleton");
+
+                // Extract keypoints in priority order
+                JToken kp = result["keypoints"]
+                    ?? result["last_response"]?["keypoints"]
+                    ?? result["data"]?["keypoints"];
+                if (kp != null)
+                    keypointsJson = kp.ToString(Newtonsoft.Json.Formatting.Indented);
             },
-            () => { if (paths != null) { SavedPaths.AddRange(paths); foreach (string p in paths) { var t = LoadTexture(p); if (t != null) ResultTextures.Add(t); } } },
+            () =>
+            {
+                if (paths != null) { SavedPaths.AddRange(paths); foreach (string p in paths) { var t = LoadTexture(p); if (t != null) ResultTextures.Add(t); } }
+                if (keypointsJson != null) _skeletonKeypointsJson = keypointsJson;
+            },
             ex => { _errorMessage = $"Error: {ex.Message}"; });
         }
 

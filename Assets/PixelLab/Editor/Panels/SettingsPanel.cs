@@ -12,9 +12,12 @@ namespace PixelLab.Editor
         // EditorPrefs keys
         private const string PrefApiKey    = "PixelLab_ApiKey";
         private const string PrefOutputDir = "PixelLab_OutputDir";
+        private const string PrefBaseUrl   = "PixelLab_BaseUrl";
+        private const string DefaultBaseUrl = "https://api.pixellab.ai/v2";
 
         private string _apiKey      = "";
         private string _outputDir   = "Assets/PixelLab/Output";
+        private string _baseUrl     = "https://api.pixellab.ai/v2";
         private bool   _showKey     = false;
         private string _testResult  = "";
         private bool   _testSuccess = false;
@@ -27,15 +30,15 @@ namespace PixelLab.Editor
         {
             _apiKey    = EditorPrefs.GetString(PrefApiKey,    "");
             _outputDir = EditorPrefs.GetString(PrefOutputDir, "Assets/PixelLab/Output");
+            _baseUrl   = EditorPrefs.GetString(PrefBaseUrl,   DefaultBaseUrl);
+            if (string.IsNullOrEmpty(_baseUrl)) _baseUrl = DefaultBaseUrl;
         }
 
         public override void Draw()
         {
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("API Settings", EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
+            DrawPanelHeader("API Settings");
 
             // API Key field with show/hide toggle
             EditorGUILayout.BeginHorizontal();
@@ -52,7 +55,7 @@ namespace PixelLab.Editor
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel("Output Directory");
             _outputDir = EditorGUILayout.TextField(_outputDir);
-            if (GUILayout.Button("Browse", GUILayout.Width(40)))
+            if (GUILayout.Button("Browse", GUILayout.Width(60)))
             {
                 string selected = EditorUtility.OpenFolderPanel("Select Output Directory", Application.dataPath, "");
                 if (!string.IsNullOrEmpty(selected))
@@ -66,6 +69,13 @@ namespace PixelLab.Editor
                         : norm;
                 }
             }
+            EditorGUILayout.EndHorizontal();
+
+            // Base URL (advanced — leave at default unless targeting a different endpoint)
+            // TODO: default sizes for RotatePanel and AnimationPanel should be reviewed here
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PrefixLabel("Base URL");
+            _baseUrl = EditorGUILayout.TextField(_baseUrl);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(10);
@@ -95,9 +105,10 @@ namespace PixelLab.Editor
         {
             EditorPrefs.SetString(PrefApiKey,    _apiKey);
             EditorPrefs.SetString(PrefOutputDir, _outputDir);
+            EditorPrefs.SetString(PrefBaseUrl,   string.IsNullOrEmpty(_baseUrl) ? DefaultBaseUrl : _baseUrl);
 
             if (!string.IsNullOrEmpty(_apiKey))
-                Window.Connect(_apiKey, _outputDir);
+                Window.Connect(_apiKey, _outputDir, string.IsNullOrEmpty(_baseUrl) ? DefaultBaseUrl : _baseUrl);
             else
                 Window.Disconnect();
         }
@@ -117,12 +128,11 @@ namespace PixelLab.Editor
                     JObject result = await tempClient.GetBalance();
 
                     // Parse on the background thread; store in scratch fields for onComplete
-                    _pendingUsd     = result["usd_balance"]?.Value<float>() ?? 0f;
-                    _pendingCredits = result["balance"]?.Value<float>()     ?? 0f;
+                    (_pendingUsd, _pendingCredits) = PixelLabWindow.ParseBalanceResponse(result);
                 },
                 onComplete: () =>
                 {
-                    _testResult  = $"Connection successful! Balance: ${_pendingUsd:F4} USD ({_pendingCredits:F2} credits)";
+                    _testResult  = $"Connection successful! Balance: ${_pendingUsd:F4}";
                     _testSuccess = true;
                     Window.SetCredits($"${_pendingUsd:F4}");
                 },

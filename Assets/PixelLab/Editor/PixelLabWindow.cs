@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using System;
+using Newtonsoft.Json.Linq;
 
 namespace PixelLab.Editor
 {
@@ -13,8 +14,10 @@ namespace PixelLab.Editor
 
         private const string PrefApiKey      = "PixelLab_ApiKey";
         private const string PrefOutputDir   = "PixelLab_OutputDir";
+        private const string PrefBaseUrl     = "PixelLab_BaseUrl";
         private const string PrefSelectedPanel = "PixelLab_SelectedPanel";
         private const string DefaultOutput   = "Assets/PixelLab/Output";
+        private const string DefaultBaseUrl  = "https://api.pixellab.ai/v2";
 
         private const float SidebarWidth   = 160f;
         private const float NavButtonHeight = 36f;
@@ -38,6 +41,9 @@ namespace PixelLab.Editor
 
         public PixelLabClient Client    { get; private set; }
         public string         OutputDir { get; private set; } = DefaultOutput;
+
+        /// <summary>Panels may subscribe to be notified after a successful Connect call.</summary>
+        public Action OnConnected;
 
         // -----------------------------------------------------------------------
         // Private UI state
@@ -84,20 +90,26 @@ namespace PixelLab.Editor
             };
 
             // Restore settings and auto-connect if key exists
-            string savedKey    = EditorPrefs.GetString(PrefApiKey, "");
-            string savedOutput = EditorPrefs.GetString(PrefOutputDir, DefaultOutput);
-            _selectedPanel     = EditorPrefs.GetInt(PrefSelectedPanel, 0);
+            string savedKey     = EditorPrefs.GetString(PrefApiKey,    "");
+            string savedOutput  = EditorPrefs.GetString(PrefOutputDir, DefaultOutput);
+            string savedBaseUrl = EditorPrefs.GetString(PrefBaseUrl,   DefaultBaseUrl);
+            _selectedPanel      = EditorPrefs.GetInt(PrefSelectedPanel, 0);
 
             OutputDir = string.IsNullOrEmpty(savedOutput) ? DefaultOutput : savedOutput;
 
             if (!string.IsNullOrEmpty(savedKey))
-                Connect(savedKey, OutputDir);
+                Connect(savedKey, OutputDir, string.IsNullOrEmpty(savedBaseUrl) ? DefaultBaseUrl : savedBaseUrl);
         }
 
         private void OnDisable()
         {
             Client?.Dispose();
             Client = null;
+
+            // Drop panel-side subscriptions so domain reloads don't leave dangling
+            // handlers pointing at the previous panel instances.
+            OnConnected               = null;
+            OnBalanceRefreshRequested = null;
 
             // Destroy cached style textures to prevent leaks
             if (_texSidebarNormal != null) DestroyImmediate(_texSidebarNormal);
@@ -275,12 +287,40 @@ namespace PixelLab.Editor
         public void SetCredits(string text) { _creditText   = text;  Repaint(); }
         public void SetCost(string text)    { _lastCostText = text;  Repaint(); }
 
+        /// <summary>
+        /// Switch the active panel by index (matches the order of _panelNames).
+        /// Panels can call this to provide click-through navigation.
+        /// </summary>
+        public void SelectPanel(int index)
+        {
+            if (_panels == null || index < 0 || index >= _panels.Length) return;
+            _selectedPanel = index;
+            EditorPrefs.SetInt(PrefSelectedPanel, index);
+            Repaint();
+        }
+
+        /// <summary>Returns the panel index for a given name, or -1 if not found.</summary>
+        public int GetPanelIndex(string name)
+        {
+            if (_panelNames == null) return -1;
+            for (int i = 0; i < _panelNames.Length; i++)
+                if (_panelNames[i] == name) return i;
+            return -1;
+        }
+
         public void Connect(string apiKey, string outputDir)
         {
+            string savedBaseUrl = EditorPrefs.GetString(PrefBaseUrl, DefaultBaseUrl);
+            Connect(apiKey, outputDir, string.IsNullOrEmpty(savedBaseUrl) ? DefaultBaseUrl : savedBaseUrl);
+        }
+
+        public void Connect(string apiKey, string outputDir, string baseUrl)
+        {
             Client?.Dispose();
-            Client    = new PixelLabClient(apiKey);
+            Client    = new PixelLabClient(apiKey, baseUrl);
             OutputDir = outputDir;
             SetStatus("Connected");
+            OnConnected?.Invoke();
         }
 
         public void Disconnect()
@@ -294,6 +334,86 @@ namespace PixelLab.Editor
         // -----------------------------------------------------------------------
         // Utility
         // -----------------------------------------------------------------------
+
+        /// <summary>
+        /// Parses a balance API response into (usd, credits). Handles both flat and
+        /// data-wrapped response shapes, and tries multiple field name variants.
+        /// </summary>
+        public static (float usd, float credits) ParseBalanceResponse(JObject result)
+        {
+            if (result == null) return (0f, 0f);
+
+            // Drill through possible wrappers: result.data, then look at "credits" which
+            // can be either a nested object {type:"usd", usd:5.41} OR a flat number.
+            JObject root = result["data"] as JObject ?? result;
+
+            float usd = 0f;
+            float credits = 0f;
+
+            // Case 1: "credits" is a nested object — actual PixelLab v2 shape.
+            //   { "credits": { "type": "usd", "usd": 5.41 } }
+            if (root["credits"] is JObject creditsObj)
+            {
+                string type = creditsObj["type"]?.ToString();
+                float amount = TryReadFloat(creditsObj, "usd", "amount", "value", "balance");
+                if (type == "usd") usd = amount;
+                else credits = amount;
+            }
+            else
+            {
+                // Case 2: flat fields at root.
+                usd     = TryReadFloat(root, "usd_balance", "usd", "balance_usd", "remaining_usd");
+                credits = TryReadFloat(root, "remaining_credits", "balance", "credits", "remaining");
+            }
+
+            // Fallback derivations between USD <-> credits (PixelLab: 1 credit ≈ $0.001).
+            if (usd == 0f && credits > 0f) usd = credits * 0.001f;
+            if (credits == 0f && usd > 0f) credits = usd * 1000f;
+
+            return (usd, credits);
+        }
+
+        /// <summary>
+        /// Returns a multi-line display string showing both USD and credits.
+        /// Falls back to the raw JSON ToString when nothing parsed.
+        /// </summary>
+        public static string FormatBalanceForDisplay(JObject result)
+        {
+            if (result == null) return "No response";
+
+            var (usd, credits) = ParseBalanceResponse(result);
+
+            if (usd == 0f && credits == 0f)
+                return $"(raw) {result.ToString(Newtonsoft.Json.Formatting.None)}";
+
+            return $"${usd:F4} USD";
+        }
+
+        private static float TryReadFloat(JObject obj, params string[] keys)
+        {
+            if (obj == null) return 0f;
+            foreach (string k in keys)
+            {
+                JToken t = obj[k];
+                if (t == null || t.Type == JTokenType.Null) continue;
+                try { return t.Value<float>(); }
+                catch { /* try next key */ }
+            }
+            return 0f;
+        }
+
+        /// <summary>
+        /// Trigger a balance refresh on the Dashboard panel and refresh the status bar.
+        /// Safe to call from any panel after an API operation completes.
+        /// </summary>
+        public void RefreshBalance()
+        {
+            if (Client == null) return;
+            EditorApplication.delayCall += () => OnBalanceRefreshRequested?.Invoke();
+        }
+
+        /// <summary>Fired when any panel requests a balance refresh. DashboardPanel subscribes.</summary>
+        public Action OnBalanceRefreshRequested;
 
         /// <summary>Create a 1x1 solid-colour Texture2D for use in GUIStyle backgrounds.</summary>
         private static Texture2D MakeSolidTex(Color c)

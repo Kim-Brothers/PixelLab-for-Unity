@@ -102,13 +102,15 @@ namespace PixelLab.Editor
 
         public override void Draw()
         {
-            if (!RequireClient()) return;
-
             ScrollPos = EditorGUILayout.BeginScrollView(ScrollPos);
 
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("Rotation", EditorStyles.boldLabel);
-            EditorGUILayout.Space(4);
+            DrawPanelHeader("Rotation");
+
+            if (!RequireClient())
+            {
+                EditorGUILayout.EndScrollView();
+                return;
+            }
 
             int newTab = GUILayout.Toolbar(_selectedTab, TabNames);
             if (newTab != _selectedTab)
@@ -185,19 +187,18 @@ namespace PixelLab.Editor
             _guidanceStr = EditorGUILayout.TextField(_guidanceStr, GUILayout.Width(60));
             EditorGUILayout.EndHorizontal();
 
-            // Init image
+            // Optional images (collapsed by default)
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Init Image (Optional)");
-            DrawImagePicker("", ref _initImagePath, ref _initImagePreview);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Init Image Strength", GUILayout.Width(130));
-            _initStrengthStr = EditorGUILayout.TextField(_initStrengthStr, GUILayout.Width(60));
-            EditorGUILayout.EndHorizontal();
+            if (DrawOptionalFoldout("Optional Images & Strength"))
+            {
+                DrawImagePicker("Init Image", ref _initImagePath, ref _initImagePreview);
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("Init Image Strength", GUILayout.Width(130));
+                _initStrengthStr = EditorGUILayout.TextField(_initStrengthStr, GUILayout.Width(60));
+                EditorGUILayout.EndHorizontal();
 
-            // Color reference image
-            EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Color Reference Image (Optional)");
-            DrawImagePicker("", ref _colorImagePath, ref _colorImagePreview);
+                DrawImagePicker("Color Reference", ref _colorImagePath, ref _colorImagePreview);
+            }
 
             EditorGUILayout.Space(8);
 
@@ -277,7 +278,7 @@ namespace PixelLab.Editor
                     if (!string.IsNullOrEmpty(initImagePath))
                     {
                         extra["init_image"] = JObject.Parse(ImageUtils.ImageToBase64Json(initImagePath));
-                        if (!string.IsNullOrEmpty(initStrengthStr) && int.TryParse(initStrengthStr, out int initStrength))
+                        if (!string.IsNullOrEmpty(initStrengthStr) && float.TryParse(initStrengthStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float initStrength))
                             extra["init_image_strength"] = initStrength;
                     }
 
@@ -387,12 +388,10 @@ namespace PixelLab.Editor
                     JObject refImageData = JObject.Parse(ImageUtils.ImageToBase64Json(refImagePath));
                     ImageUtils.GetImageSize(refImagePath, out int refW, out int refH);
 
-                    // API expects {image: ImageData, width: N, height: N} (flat, not nested)
                     var refImageWrapper = new JObject
                     {
-                        ["image"]  = refImageData,
-                        ["width"]  = refW,
-                        ["height"] = refH
+                        ["image"] = refImageData,
+                        ["size"]  = new JObject { ["width"] = refW, ["height"] = refH }
                     };
 
                     var extraParams = new JObject
